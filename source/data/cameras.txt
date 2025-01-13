@@ -1,0 +1,2 @@
+0;webcamera;10
+1;phone_camera;3

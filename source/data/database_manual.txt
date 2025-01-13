@@ -1,0 +1,10 @@
+./faces/faces_list/faces.txt contains the list of all users in the database, every line in the document has: name, clearance, vector_filepath, face_image_filepath all separated by semicolons
+./faces/images contains images of users' faces
+./faces/vectors contains encoded vectors of users' faces' features
+./modules/utils contains python scripts used in the project
+./modules/views contains classes of views in the project, i.e. main view, camera view and such
+./source/data/recognitions contains images of recognized faces (saved every 30 minutes)
+./source/data/recognitions.txt contains the list of all recognized faces, each line includes: name, date time, date time saved image, camera index, 1 or 0 (1 for sufficient clearance level for that zone or 0 for insufficient)
+./source/data/cameras.txt contains the list of cameras, each line contains: the camera index(as seen by the pc), camera codename (for example: kitchen_camera, zone1_camera...), the cameras clearance all separated by semicolons
+./source/images contains additional images used in the project (icons, explanatory and supplementary images)
+./main.py main UI file that supports the window and all of the basic functions

@@ -1,0 +1,3 @@
+Никитин Роман Ильич;11;./faces/vectors/Никитин-Роман-Ильичvector.txt;E:/Face recognition systems/faces/images/nikitin.jpg
+вффыфывыф фыв ыф;1;./faces/vectors/вффыфывыф-фыв-ыфvector.txt;E:/Face recognition systems/face.jpeg
+sadd asasd asdsad;112;./faces/vectors/sadd-asasd-asdsadvector.txt;E:/Face recognition systems/face.jpeg
