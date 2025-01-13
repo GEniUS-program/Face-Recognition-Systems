@@ -32,7 +32,6 @@ class FaceRecognition:
         #    self.recog_history = [[elem for elem in ]]
 
     def compare_faces(self, frame):
-        print('compare_faces called')
         face_locations = face_recognition.face_locations(frame)
         if not face_locations:  # Changed from `if face_locations is None`
             logging.info(
