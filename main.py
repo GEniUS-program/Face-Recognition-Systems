@@ -3,7 +3,7 @@ from PyQt6 import QtWidgets
 from modules.views.main_view import MainView
 from modules.views.dbview import DataBaseView
 from modules.views.cam_view import CamFeedView
-# from modules.views.recognition_history_view import RecognitionHistoryView
+from modules.views.recognition_history_view import RecognitionHistoryView
 from multiprocessing import freeze_support
 import sys 
 
@@ -53,13 +53,13 @@ class MainUI(QtWidgets.QMainWindow):
         self.database_view = DataBaseView()
         # Uncomment these lines when the views are defined
         self.camera_view = CamFeedView()
-        # self.recog_history_view = RecognitionHistoryView()
+        self.recog_history_view = RecognitionHistoryView()
         
         # Adding views to the stacked widget
         self.main_stacked_widget.addWidget(self.main_view)
         self.main_stacked_widget.addWidget(self.database_view)
         self.main_stacked_widget.addWidget(self.camera_view)
-        # self.main_stacked_widget.addWidget(self.recog_history_view)
+        self.main_stacked_widget.addWidget(self.recog_history_view)
 
         # Adding widgets to the main layout
         self.layout.addLayout(self.view_select_buttons_layout)
@@ -81,7 +81,7 @@ class MainUI(QtWidgets.QMainWindow):
         
     def recog_view_show(self):
         # Uncomment this line when the recognition history view is defined
-        # self.main_stacked_widget.setCurrentWidget(self.recog_history_view)
+        self.main_stacked_widget.setCurrentWidget(self.recog_history_view)
         pass  # Placeholder for the recognition history logic
 
     def show_settings(self):

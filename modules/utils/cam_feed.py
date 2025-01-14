@@ -56,8 +56,6 @@ class CameraWorker(QObject):
                         self.faces.append(result_data)
                         logging.info(
                             'Frame processed and accepted at CameraWorker')
-                    else:
-                        logging.warning('No faces detected in the frame.')
                 except Exception as e:
                     logging.error(f'Error in compare_faces: {e}')
 
