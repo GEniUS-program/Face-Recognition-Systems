@@ -91,7 +91,7 @@ if __name__ == "__main__":
     freeze_support()
     app = QtWidgets.QApplication(sys.argv)
     window = MainUI()
-    window.setWindowTitle("Main Application")
+    window.setWindowTitle("Face recognition")
     window.resize(400, 300)
     window.show()
     sys.exit(app.exec())
