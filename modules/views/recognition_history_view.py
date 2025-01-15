@@ -1,4 +1,5 @@
 from PyQt6 import QtWidgets
+import cv2
 
 
 class RecognitionHistoryView(QtWidgets.QWidget):
@@ -9,15 +10,13 @@ class RecognitionHistoryView(QtWidgets.QWidget):
     def initUI(self):
         self.layout = QtWidgets.QVBoxLayout()
 
-        # search bar for recognition history
         self.search_bar = QtWidgets.QLineEdit()
         self.search_bar.setPlaceholderText("Поиск")
         self.layout.addWidget(self.search_bar)
 
-        # table for recognition history
         self.recognition_history_table = QtWidgets.QTableWidget()
-        self.recognition_history_table.setColumnCount(3)
-        self.recognition_history_table.setHorizontalHeaderLabels(["ФИО", "Результат", "Время"])
+        self.recognition_history_table.setColumnCount(4)
+        self.recognition_history_table.setHorizontalHeaderLabels(["ФИО", 'Дата', 'Камера', 'Совпадение уровня доступа'])
         self.recognition_history_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.layout.addWidget(self.recognition_history_table)
 
@@ -28,3 +27,8 @@ class RecognitionHistoryView(QtWidgets.QWidget):
 
     def on_row_selected(self, index):
         print(index)
+
+    def update_recognition_table(self):
+        self.recognition_history_table.setColumnCount(0)
+        self.recognition_history_table.setColumnCount(4)
+        self.recognition_history_table.setHorizontalHeaderLabels(["ФИО", 'Дата', 'Камера', 'Совпадение уровня доступа'])
