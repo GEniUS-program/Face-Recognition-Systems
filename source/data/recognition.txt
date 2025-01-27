@@ -1,0 +1,31 @@
+Никитин Роман Ильич;2025-01-27 19-19-19;.\\source\\images\\placeholder-image.png;1;0
+Unknown;2025-01-27 13-34-34;.\\source\\data\\recognition_trespass\\trespass2025-01-27 13-34-34.jpg;0;0
+Unknown;2025-01-28 02-51-32;./source/data/recognition_trespass/trespass2025-01-28 02-51-32.jpg;0;0
+Unknown;2025-01-28 02-51-32;./source/data/recognition_trespass/trespass2025-01-28 02-51-32.jpg;0;0
+Unknown;2025-01-28 02-51-33;./source/data/recognition_trespass/trespass2025-01-28 02-51-33.jpg;0;0
+Unknown;2025-01-28 02-51-36;./source/data/recognition_trespass/trespass2025-01-28 02-51-36.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-36;./source/data/recognitions/level2025-01-28 02-51-36.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-39;./source/data/recognitions/level2025-01-28 02-51-39.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-40;./source/data/recognitions/level2025-01-28 02-51-40.jpg;0;0
+Unknown;2025-01-28 02-51-41;./source/data/recognition_trespass/trespass2025-01-28 02-51-41.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-45;./source/data/recognitions/level2025-01-28 02-51-44.jpg;0;0
+Unknown;2025-01-28 02-51-45;./source/data/recognition_trespass/trespass2025-01-28 02-51-45.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-48;./source/data/recognitions/level2025-01-28 02-51-48.jpg;0;0
+Unknown;2025-01-28 02-51-48;./source/data/recognition_trespass/trespass2025-01-28 02-51-48.jpg;0;0
+Unknown;2025-01-28 02-51-49;./source/data/recognition_trespass/trespass2025-01-28 02-51-49.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-52;./source/data/recognitions/level2025-01-28 02-51-52.jpg;0;0
+Unknown;2025-01-28 02-51-53;./source/data/recognition_trespass/trespass2025-01-28 02-51-53.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-54;./source/data/recognitions/level2025-01-28 02-51-54.jpg;0;0
+Unknown;2025-01-28 02-51-55;./source/data/recognition_trespass/trespass2025-01-28 02-51-55.jpg;0;0
+вффыфывыф фыв ыф;2025-01-28 02-51-58;./source/data/recognitions/level2025-01-28 02-51-58.jpg;0;0
+Unknown;2025-01-28 02-51-59;./source/data/recognition_trespass/trespass2025-01-28 02-51-59.jpg;0;0
+Unknown;2025-01-28 02-52-02;./source/data/recognition_trespass/trespass2025-01-28 02-52-02.jpg;0;0
+Unknown;2025-01-28 02-52-05;./source/data/recognition_trespass/trespass2025-01-28 02-52-05.jpg;0;0
+Unknown;2025-01-28 02-52-08;./source/data/recognition_trespass/trespass2025-01-28 02-52-08.jpg;0;0
+Unknown;2025-01-28 02-52-09;./source/data/recognition_trespass/trespass2025-01-28 02-52-09.jpg;0;0
+Unknown;2025-01-28 02-52-09;./source/data/recognition_trespass/trespass2025-01-28 02-52-09.jpg;0;0
+Unknown;2025-01-28 02-52-12;./source/data/recognition_trespass/trespass2025-01-28 02-52-12.jpg;0;0
+Unknown;2025-01-28 02-52-12;./source/data/recognition_trespass/trespass2025-01-28 02-52-12.jpg;0;0
+Unknown;2025-01-28 02-52-13;./source/data/recognition_trespass/trespass2025-01-28 02-52-13.jpg;0;0
+Unknown;2025-01-28 02-52-13;./source/data/recognition_trespass/trespass2025-01-28 02-52-13.jpg;0;0
+Unknown;2025-01-28 02-52-17;./source/data/recognition_trespass/trespass2025-01-28 02-52-17.jpg;0;0

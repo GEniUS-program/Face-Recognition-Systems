@@ -37,7 +37,7 @@ class DataBaseWorker:
             logging.critical(
                 f'An error occured when adding data to ./faces/faces_list/faces.txt. Error details: {e}')
 
-    def edit(self, *args):# name, clearance, filepath, line_index
+    def edit(self, *args):  # name, clearance, filepath, line_index
         with open('./faces/faces_list/faces.txt', 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
@@ -49,13 +49,17 @@ class DataBaseWorker:
 
         name, clearance, filepath = args[:3:]
         if filepath != lines[line_index].split(';')[3]:
-            new_vector = face_recognition.face_encodings(cv2.imread(filepath))[0]
+            new_vector = face_recognition.face_encodings(
+                cv2.imread(filepath))[0]
             with open(f"./faces/vectors/{'-'.join([name for name in name.split(' ')])}vector.txt", 'w', encoding='utf-8') as f:
                 f.write(f"{new_vector}\n")
-            lines[line_index] = name + ';' + clearance + f';./faces/vectors/{"-".join([name for name in name.split()])}vector.txt;' + filepath + '\n'
-        
-        lines[line_index] = name + ';' + clearance + ';' + lines[line_index].split(';')[2] + ';' + filepath + '\n'
-        
+            lines[line_index] = name + ';' + clearance + \
+                f';./faces/vectors/{"-".join([name for name in name.split()])}vector.txt;' + \
+                filepath + '\n'
+
+        lines[line_index] = name + ';' + clearance + ';' + \
+            lines[line_index].split(';')[2] + ';' + filepath + '\n'
+
         with open('./faces/faces_list/faces.txt', 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
@@ -67,18 +71,19 @@ class DataBaseWorker:
         logging.debug(f'lines to process: {lines}')
 
         for line in lines:
-            
+
             if name in line and clearance in line and filepath in line:
                 lines.remove(line)
                 break
         else:
             logging.warning(f'No data found to delete for {name}.')
             return
-        
+
         with open('./faces/faces_list/faces.txt', 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
-        os.remove('./faces/vectors/' + '-'.join([name for name in name.split(' ')]) + 'vector.txt')
+        os.remove('./faces/vectors/' +
+                  '-'.join([name for name in name.split(' ')]) + 'vector.txt')
 
     def read_saved_data(self):
         logging.info('Reading saved data...')
@@ -91,7 +96,6 @@ class DataBaseWorker:
                 with open(line[2], 'r') as fil:
                     self.vectors.append(
                         np.array([float(x) for x in fil.read().replace('[', '').replace(']', '').split()]))
-
 
     def clear_read_data(self):
         logging.info('Clearing read data...')

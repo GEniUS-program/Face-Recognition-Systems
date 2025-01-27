@@ -2,7 +2,7 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QWidget, QVBoxLayout, QSizePolicy
 from PyQt6.QtGui import QImage, QPixmap
 from modules.utils.face_recognition import FaceRecognition
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool, Manager, Lock
 import logging
 import cv2
 import time
@@ -13,14 +13,17 @@ class CameraWorker(QObject):
 
     def __init__(self, camera_index=0):
         super().__init__()
+        print('initializing CameraWorker class')
         self.camera_index = camera_index
         self.running = False
         self.faces = list()
         self.frame_counter = 6
-        self.pool = Pool(processes=8, maxtasksperchild=1)
+        self.pool = Pool(processes=2, maxtasksperchild=3)
         self.manager = Manager()
         self.queue = self.manager.Queue(15)
+        self.lock = self.manager.Lock()
         # Initialize your camera settings
+        cam, cam_cl = 0, 0
         with open('./source/data/cameras.txt', 'r', encoding='utf-8') as f:
             cams = f.readlines()
             for line in cams:
@@ -29,50 +32,48 @@ class CameraWorker(QObject):
                     cam_cl = line.split(';')[2]
 
         self.face_recognition = FaceRecognition(
-            cam, self.camera_index, int(cam_cl), self.queue)
+            cam, self.camera_index, int(cam_cl))
 
     def run(self):
         self.running = True
-        cap = cv2.VideoCapture(self.camera_index)
+        self.cap = cv2.VideoCapture(self.camera_index)
         i = 1
         while self.running:
-            ret, frame = cap.read()
+            ret, frame = self.cap.read()
             if not ret:
-                logging.error("Failed to capture frame from camera.")
+                logging.error(f"Failed to capture frame from camera with index: {self.camera_index}")
                 break
-
+            else:
+                logging.info(f"Got frame on camera with index: {self.camera_index}")
+    
             self.frameCaptured.emit(frame)
-
+    
             if i == self.frame_counter:
                 logging.info("Attempting to call compare_faces...")
-
+    
                 try:
                     result = self.pool.apply_async(
-                        func=self.face_recognition.compare_faces, args=(frame,))
-                    # Use get() to retrieve the result
-                    # Set a timeout to prevent hanging
-                    result_data = result.wait(timeout=0.04)
+                        func=self.face_recognition.compare_faces, args=(frame,self.lock,))
+                    result_data = result.wait(timeout=0.04)  # Wait for the result with timeout
                     if result_data is not None:
                         self.faces.append(result_data)
-                        logging.info(
-                            'Frame processed and accepted at CameraWorker')
-                    else:
-                        logging.warning('No faces detected in the frame.')
+                        logging.info('Frame processed and accepted at CameraWorker')
                 except Exception as e:
                     logging.error(f'Error in compare_faces: {e}')
-
+    
                 i = 1
             else:
                 i += 1
-
+    
             time.sleep(0.033)  # Limit to ~30 FPS
-
-        cap.release()
+    
+        self.cap.release()  # Release the camera when done
 
 
 class VideoFeed(QWidget):
-    def __init__(self, camera_index=0, parent=None):
+    def __init__(self, parent, camera_index=0):
         super().__init__(parent)
+        print('initializing VideoFeed class')
         self.thread = QThread()
         self.cameraWorker = CameraWorker(camera_index=camera_index)
         self.cameraWorker.moveToThread(self.thread)
@@ -114,7 +115,24 @@ class VideoFeed(QWidget):
         self.graphicsView.fitInView(
             self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
-    def closeEvent(self, a0):
-        self.cameraWorker.pool.close()
-        self.cameraWorker.pool.join()
-        return super().closeEvent(a0)
+    def closeEvent(self, event):
+        print('closeEvent triggered')
+        # Signal the CameraWorker to stop running
+        self.cameraWorker.running = False  # Stop the camera worker loop
+        print('trying to close thread')
+        # Wait for the thread to finish
+        self.thread.quit()  # Request the thread to quit
+        self.thread.wait()  # Wait for the thread to finish
+        print('Thread closed. Closing Process Pool...')
+        # Clean up the process pool
+        self.cameraWorker.pool.terminate()  # Terminate the pool
+        self.cameraWorker.pool.join()  # Wait for the pool to terminate
+        print('Process Pool closed. Closing VideoCapture...')
+        # Release the video capture resource
+        if self.cameraWorker.cap.isOpened():
+            self.cameraWorker.cap.release()  # Release the camera
+            print('Capture closed')
+        if self.cameraWorker.cap.isOpened():
+            print('An error occured when trying to close the videocapture: cap was not released')
+        event.accept()  # Accept the event to close the application
+    
