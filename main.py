@@ -5,7 +5,10 @@ from modules.views.dbview import DataBaseView
 from modules.views.cam_view import CamFeedView
 from modules.views.recognition_history_view import RecognitionHistoryView
 from modules.utils.camera_selection import CameraSelectorWidget
+from modules.views.recognition_history_view import RecognitionHistoryView
+from modules.utils.camera_selection import CameraSelectorWidget
 from multiprocessing import freeze_support
+import json
 import json
 import sys 
 
@@ -79,6 +82,7 @@ class MainUI(QtWidgets.QMainWindow):
         self.main_stacked_widget.addWidget(self.database_view)
         self.main_stacked_widget.addWidget(self.camera_view)
         self.main_stacked_widget.addWidget(self.recog_history_view)
+        self.main_stacked_widget.addWidget(self.recog_history_view)
 
         # Adding widgets to the main layout
         self.layout.addLayout(self.view_select_buttons_layout)
@@ -100,6 +104,7 @@ class MainUI(QtWidgets.QMainWindow):
         
     def recog_view_show(self):
         # Uncomment this line when the recognition history view is defined
+        self.main_stacked_widget.setCurrentWidget(self.recog_history_view)
         self.main_stacked_widget.setCurrentWidget(self.recog_history_view)
         pass  # Placeholder for the recognition history logic
 
@@ -123,6 +128,7 @@ if __name__ == "__main__":
     freeze_support()
     app = QtWidgets.QApplication(sys.argv)
     window = MainUI()
+    window.setWindowTitle("Face recognition")
     window.setWindowTitle("Face recognition")
     window.resize(400, 300)
     window.show()

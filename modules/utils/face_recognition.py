@@ -165,3 +165,20 @@ class FaceRecognition:
                 dt_compared = dt.datetime.now() - last_saved_time
                 return [dt_compared.total_seconds() / 60, index]
         return [10**6, len(self.recognition_times)]
+
+    
+    def compare_dates_by_name(self, name) -> int:
+        date = 0
+        override = False
+        index = 0
+        for line in self.recognition_times:
+            if line[0] == name:
+                date = line[1]
+                break
+            index += 1
+        else:
+            logging.warning(f'Name not found in recognition history, saving this recognition image file overriding saving limit.')
+            override = True
+        dt_compared = dt.datetime.now(dt._TzInfo()) - date
+
+        return [10**6 if override else dt_compared.min // 2, index]
