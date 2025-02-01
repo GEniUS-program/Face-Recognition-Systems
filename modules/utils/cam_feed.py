@@ -18,9 +18,8 @@ class CameraWorker(QObject):
         self.running = False
         self.faces = list()
         self.frame_counter = 6
-        self.pool = Pool(processes=2, maxtasksperchild=3)
+        self.pool = Pool(processes=5)
         self.manager = Manager()
-        self.queue = self.manager.Queue(15)
         self.lock = self.manager.Lock()
         # Initialize your camera settings
         cam, cam_cl = 0, 0
@@ -65,7 +64,7 @@ class CameraWorker(QObject):
             else:
                 i += 1
     
-            time.sleep(0.033)  # Limit to ~30 FPS
+            #time.sleep(0.033)  # Limit to ~30 FPS
     
         self.cap.release()  # Release the camera when done
 

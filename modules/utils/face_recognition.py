@@ -50,7 +50,6 @@ class FaceRecognition:
 
     def compare_faces(self, frame, lock):
         self.recognition_times = self.load_recognition_history()
-        print('comparing faces')
         face_locations = face_recognition.face_locations(frame)
         if not face_locations:
             return None
@@ -58,29 +57,27 @@ class FaceRecognition:
         face_encodings = face_recognition.face_encodings(frame, face_locations)
 
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+           
             matches = face_recognition.compare_faces(
                 self.known_face_encodings, face_encoding)
+            
             name, clearance = self.get_recognition_info(matches, face_encoding)
-
+           
             if name == "Unknown":
                 frame = self.draw_face_rectangle(
                     frame, (top, right, bottom, left), name, -1)
                 self.save_trespass_image(frame, lock)
-                return None
-
+                return None 
             frame = self.draw_face_rectangle(
                 frame, (top, right, bottom, left), name, clearance)
-
             if clearance < self.camera_clearance:
                 self.save_tlevel_image(frame, name, lock)
                 return None
-
             last_saved_date_compared = self.compare_dates_by_name(name)
-            print(last_saved_date_compared)
             with lock:
                 with open('./source/data/recognition.txt', 'a', encoding='utf-8') as f:
                     f.write(
-                        f"{name};{dt.datetime.now().strftime(self.dt_format)};'.\\source\\images\\placeholder-image.png';1;{self.camera_index}\n")
+                        f"{name};{dt.datetime.now().strftime(self.dt_format)};.\\source\\images\\placeholder-image.png;1;{self.camera_index}\n")
                     f.flush()
 
             if last_saved_date_compared[0] >= self.saving_limit:
@@ -137,7 +134,6 @@ class FaceRecognition:
 
         success = cv2.imwrite(full_path, frame)
         if success == True:
-            print('updating recognition times')
             self.update_recognition_times(name, full_path, lock)
         else:
             logging.error('Failed to save image.')
@@ -167,18 +163,3 @@ class FaceRecognition:
         return [10**6, len(self.recognition_times)]
 
     
-    def compare_dates_by_name(self, name) -> int:
-        date = 0
-        override = False
-        index = 0
-        for line in self.recognition_times:
-            if line[0] == name:
-                date = line[1]
-                break
-            index += 1
-        else:
-            logging.warning(f'Name not found in recognition history, saving this recognition image file overriding saving limit.')
-            override = True
-        dt_compared = dt.datetime.now(dt._TzInfo()) - date
-
-        return [10**6 if override else dt_compared.min // 2, index]

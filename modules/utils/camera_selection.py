@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QListWidg
 from modules.utils.communicator import Communicate
 from PyQt6.QtCore import Qt
 
-class CameraSelectorWidget(QDialog):  # Change QWidget to QDialog
+class CameraSelectorWidget(QDialog):
     def __init__(self):
         super().__init__()
 
@@ -36,7 +36,6 @@ class CameraSelectorWidget(QDialog):  # Change QWidget to QDialog
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
 
-                # Create a formatted string with camera information
                 item_text = f"Camera {i} {width}x{height}, {fps} FPS"
                 item = QListWidgetItem(item_text)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -53,4 +52,4 @@ class CameraSelectorWidget(QDialog):  # Change QWidget to QDialog
                 selected_cameras.append(camera_index)
                 print(f"Selected Camera: {camera_index}")
         self.seleted_cameras_signal.emit(selected_cameras)
-        self.close()  # Close the widget after selection
+        self.close()

@@ -31,10 +31,10 @@ class DataBaseWorker:
             with open('./faces/faces_list/faces.txt', 'a', encoding='utf-8') as f:
                 f.write(
                     f"{name};{clearance};./faces/vectors/{'-'.join([name for name in name.split(' ')])}vector.txt;{facepath}\n")
-            logging.info(f'Added data to ./faces/faces_list/faces.txt')
+            print(f'Added data to ./faces/faces_list/faces.txt')
 
         except Exception as e:
-            logging.critical(
+            print(
                 f'An error occured when adding data to ./faces/faces_list/faces.txt. Error details: {e}')
 
     def edit(self, *args):  # name, clearance, filepath, line_index

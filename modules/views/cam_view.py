@@ -40,6 +40,6 @@ class CamFeedView(QtWidgets.QWidget):
         self.focused_feed.closeEvent(event)
         for feed in self.unfcsd_feeds:
             feed.closeEvent(event)
-        event.accept()  # Accept the event to close the application
+        event.accept()
     
     

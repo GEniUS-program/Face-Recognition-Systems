@@ -1,16 +1,25 @@
 class RecognitinonHistoryWorker:
     def __init__(self):
-        with open('./source/data/recognitions.txt', 'r', encoding='utf-8') as f:
-            self.recog_history = [[elem for elem in line.strip().split(';')] for line in f.readlines()]
-            # [[name, date_time recognized, date_time saved image, camera index, 1 or 0], ...]
+        self.update_history()
 
-    
-    def get_full(self, *args):
-        '''
-        Arguments:
-            *args: a list of integers, representing an element index.\n
-            (0) name, (1) date_time recognized, (2) date_time saved image, (3) camera index, (4) 1 or 0
-        >>> get_full(0, 3, 4)
-        >>> [[name(0), camera index(3), 1 or 0(4)], ...]
+    def get(self, name=None, is_suf_clearance=None, camera_index=None, date=None, is_img=None):
+        self.update_history()
+        args = {0: name, 3: is_suf_clearance, 4: camera_index, 1: date}
+        output = self.recog_history
+        if is_img is not None and is_img == '1':
+            output = [line for line in output if 'placeholder-image.png' not in line[2]]
+        elif is_img is not None and is_img == '0':
+            output = [line for line in output if 'placeholder-image.png' in line[2]]
+        for key, value in args.items():
+            if value is not None:
+                output = [line for line in output if value in line[key]]
+        return output
 
-        '''
+    def search(self, search):
+        return [line for line in self.recog_history if search in ''.join(line)]
+
+    def update_history(self):
+        with open('./source/data/recognition.txt', 'r', encoding='utf-8') as f:
+            self.recog_history = [
+                [elem for elem in line.strip().split(';')] for line in f.readlines()]
+            # [[name, date_time recognized, saved image location, 1 or 0, camera index], ...]

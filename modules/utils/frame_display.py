@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 from PyQt6 import QtWidgets, QtCore, QtGui
-from PyQt6.QtGui import QImage, QPixmap
-import cv2
+from PyQt6.QtCore import Qt
 
 
 class FrameDisplayWidget(QtWidgets.QLabel):
-    def __init__(self, frame, cam, zone):
+    def __init__(self, frame, cam='n/a', zone='n/a'):
         super(FrameDisplayWidget, self).__init__()
-
+        
         self.image_label = QtWidgets.QLabel(self)
         self.image_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
@@ -20,12 +19,12 @@ class FrameDisplayWidget(QtWidgets.QLabel):
         pixmap = QtGui.QPixmap.fromImage(q_image)
 
         # Optionally, resize the image to fit the QLabel
-        scaled_pixmap = pixmap.scaled(self.size(),
+        self.scaled_pixmap = pixmap.scaled(self.size(),
                                       QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
                                       QtCore.Qt.TransformationMode.FastTransformation)
 
         # Set the scaled QPixmap to the QLabel
-        self.image_label.setPixmap(scaled_pixmap)
+        self.image_label.setPixmap(self.scaled_pixmap)
 
         # Set the QLabel to expand with the widget
         self.image_label.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
@@ -37,3 +36,23 @@ class FrameDisplayWidget(QtWidgets.QLabel):
 
         # Resize the widget to fit the scaled image (optional)
         # self.resize(scaled_pixmap.size())  # Uncomment if you want to set size based on the image
+
+
+
+class WindowDisplay(QtWidgets.QDialog):
+    def __init__(self, frame):
+        super().__init__()
+        self.frame = frame
+        self.resize(800, 600)
+        self.display_frame()
+
+    def display_frame(self):
+        self.layout = QtWidgets.QVBoxLayout(self)
+
+        display_frame = FrameDisplayWidget(self.frame)
+        display_frame.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+        display_frame.resize(display_frame.scaled_pixmap.size())
+        self.layout.addWidget(display_frame)
+
+        self.setLayout(self.layout)
