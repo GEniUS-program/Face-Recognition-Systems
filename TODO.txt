@@ -1,0 +1,10 @@
+    -   reformat the database for server and mysql (recognition history, users, faces tables)
+    -   fix the bug when there are multiple faces in the frame (only one faces gets drawn and recognition is f'ed up)
+    -   do more tests
+    -   setup database and server
+    -   implement super-resolution
+    -   implement face tracking
+    -   implement liveness detection
+    -   do a rundown of the local laws
+    -   add register functionality ADDED
+    -   add error window

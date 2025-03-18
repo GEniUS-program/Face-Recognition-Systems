@@ -1,6 +1,6 @@
 from PyQt6 import QtWidgets
 from modules.utils.recognition_history import RecognitinonHistoryWorker
-from modules.utils.frame_display import WindowDisplay
+from modules.utils.image_utils.frame_display import WindowDisplay
 import cv2
 
 

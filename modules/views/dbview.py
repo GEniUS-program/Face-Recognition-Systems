@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from PyQt6 import QtWidgets
-from modules.utils.image_path import ImagePathWidget
+from modules.utils.image_utils.image_path import ImagePathWidget
 from modules.utils.database_worker import DataBaseWorker
 from modules.utils.simple_dialog import DialogWindow
 from modules.utils.communicator import Communicate
@@ -76,9 +76,7 @@ class DataBaseView(QtWidgets.QWidget):
         self.update_db_table()
 
     def add_gate_action(self):
-        logging.info("Adding data new data to database...")
-
-        dialog = DialogWindow('Вы уверены, что хотите добавить новую запись в базу данных?', 'warning')
+        dialog = DialogWindow('Вы уверены, что хотите добавить новую запись в базу данных?')
         dialog.dialog_signal.connect(lambda x: self.add_action(x))
         dialog.exec()
 

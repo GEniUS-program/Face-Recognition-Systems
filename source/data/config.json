@@ -1,5 +1,5 @@
 {
-    "save_recognition_image_every_x_minutes":"1",
+    "save_recognition_image_every_x_minutes":"10",
     "select_cam_on_startup":"True",
     "max_recognition_processes":"10"
 }

@@ -1,10 +1,8 @@
 import face_recognition
 import datetime as dt
 import numpy as np
-import logging
 import json
 import cv2
-import os
 from modules.utils.database_worker import DataBaseWorker
 from PIL import Image, ImageDraw, ImageFont
 from playsound import playsound
@@ -24,8 +22,6 @@ class FaceRecognition:
         self.configuration = self.load_configuration()
         self.saving_limit = int(
             self.configuration['save_recognition_image_every_x_minutes'])
-        self.recognition_times = self.load_recognition_history()
-        self.recognition_times_a = self.load_all_recognitions()
 
     def initialize_transliteration(self):
         return {
@@ -40,13 +36,6 @@ class FaceRecognition:
         with open('./source/data/config.json') as f:
             return json.load(f)
 
-    def load_recognition_history(self):
-        with open('./source/data/recognition_history.txt', 'r', encoding='utf-8') as f:
-            return [j.strip('\n').split(';') for j in f.readlines()]
-
-    def load_all_recognitions(self):
-        with open('./source/data/recognition.txt', 'r', encoding='utf-8') as f:
-            return [j.strip('\n').split(';') for j in f.readlines()]
 
     def compare_faces(self, frame, lock):
         self.recognition_times = self.load_recognition_history()
@@ -57,31 +46,29 @@ class FaceRecognition:
         face_encodings = face_recognition.face_encodings(frame, face_locations)
 
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-           
+
             matches = face_recognition.compare_faces(
                 self.known_face_encodings, face_encoding)
-            
+
             name, clearance = self.get_recognition_info(matches, face_encoding)
-           
+
             if name == "Unknown":
                 frame = self.draw_face_rectangle(
                     frame, (top, right, bottom, left), name, -1)
-                self.save_trespass_image(frame, lock)
-                return None 
+                self.save_image(lock, frame, None)
+                return None
             frame = self.draw_face_rectangle(
                 frame, (top, right, bottom, left), name, clearance)
             if clearance < self.camera_clearance:
-                self.save_tlevel_image(frame, name, lock)
+                self.save_image(lock, frame, name, 1)
                 return None
-            last_saved_date_compared = self.compare_dates_by_name(name)
-            with lock:
-                with open('./source/data/recognition.txt', 'a', encoding='utf-8') as f:
-                    f.write(
-                        f"{name};{dt.datetime.now().strftime(self.dt_format)};.\\source\\images\\placeholder-image.png;1;{self.camera_index}\n")
-                    f.flush()
 
+            last_saved_date_compared = self.compare_dates_by_name(name)
             if last_saved_date_compared[0] >= self.saving_limit:
-                self.save_recognition_image(frame, name, lock)
+                self.update_recognition_times(name, lock)
+                self.save_image(lock, frame, name, 2)
+            else:
+                self.save_image(lock, frame=None)
 
     def get_recognition_info(self, matches, face_encoding):
         if True in matches:
@@ -103,53 +90,28 @@ class FaceRecognition:
                         (255, 255, 255), font=ImageFont.truetype('arial.ttf', 25))
         return np.array(frame)
 
-    def save_trespass_image(self, frame, lock):
-        playsound('.\\source\\sounds\\alert_sound.mp3')
-        filename = f'./source/data/recognition_trespass/trespass{dt.datetime.now().strftime(self.dt_format)}.jpg'
+    def save_image(self, lock, frame=None, name=None, intent=0):
+        direct = './source/data/recognitions/'
+        if frame is None:
+            filename = f'{direct}placeholder-image.png'
+        elif name is not None and intent == 2:  # recognition
+            filename = f'{direct}{"".join([self.transcr.get(i, "") for i in name.upper()])}{dt.datetime.now().strftime(self.dt_format)}.jpg'
+        elif intent in [0, 1]:  # 0 - tresspass, 1 - tlevel
+            playsound('.\\source\\sounds\\alert_sound.mp3')
+            filename = f'{direct}{("trespass" if intent == 0 else "level")}{dt.datetime.now().strftime(self.dt_format)}.jpg'
+
         cv2.imwrite(filename, frame)
         with lock:
             with open('./source/data/recognition.txt', 'a', encoding='utf-8') as f:
-                f.write(
-                    f'Unknown;{dt.datetime.now().strftime(self.dt_format)};{filename};0;{self.camera_index}\n')
+                f.write(f'{(name if intent in [1, 2] else "Unknown")};{dt.datetime.now().strftime(self.dt_format)};{filename};{int(intent == 2)};{self.camera_index}\n')
                 f.flush()
 
-    def save_tlevel_image(self, frame, name, lock):
-        playsound('.\\source\\sounds\\alert_sound.mp3')
-        filename = f'./source/data/recognitions/level{dt.datetime.now().strftime(self.dt_format)}.jpg'
-        cv2.imwrite(filename, frame)
-        with lock:
-            with open('./source/data/recognition.txt', 'a', encoding='utf-8') as f:
-                f.write(
-                    f'{name};{dt.datetime.now().strftime(self.dt_format)};{filename};0;{self.camera_index}\n')
-                f.flush()
-
-    def save_recognition_image(self, frame, name, lock):
-        save_directory = './source/data/recognitions/'
-        os.makedirs(save_directory, exist_ok=True)  # Ensure directory exists
-
-        transliterated_name = "".join(
-            [self.transcr.get(i, '') for i in name.upper()])
-        filename = f'{transliterated_name} {dt.datetime.now().strftime(self.dt_format)}.jpg'
-        full_path = os.path.join(save_directory, filename)
-
-        success = cv2.imwrite(full_path, frame)
-        if success == True:
-            self.update_recognition_times(name, full_path, lock)
-        else:
-            logging.error('Failed to save image.')
-        with lock:
-            with open('./source/data/recognition.txt', 'a', encoding='utf-8') as f:
-                f.write(
-                    f'{name};{dt.datetime.now().strftime(self.dt_format)};{full_path};1;{self.camera_index}\n')
-                f.flush()
-
-    def update_recognition_times(self, name, full_path, lock):
+    def update_recognition_times(self, name, lock):
         last_saved_date_compared = self.compare_dates_by_name(name)
         self.recognition_times[last_saved_date_compared[1]] = [
-            name, dt.datetime.now().strftime(self.dt_format), full_path
-        ]
+            name, dt.datetime.now().strftime(self.dt_format)]
         with lock:
-            with open('./source/data/recognition_history.txt', 'w', encoding='utf-8') as f:
+            with open('./source/data/recognition.txt', 'w', encoding='utf-8') as f:
                 for line in self.recognition_times:
                     f.write(';'.join(line) + '\n')
                 f.flush()
@@ -161,5 +123,3 @@ class FaceRecognition:
                 dt_compared = dt.datetime.now() - last_saved_time
                 return [dt_compared.total_seconds() / 60, index]
         return [10**6, len(self.recognition_times)]
-
-    

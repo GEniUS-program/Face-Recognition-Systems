@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets
-from modules.utils.cam_feed import VideoFeed
+from modules.utils.image_utils.cam_feed import VideoFeed
 
 
 class CamFeedView(QtWidgets.QWidget):

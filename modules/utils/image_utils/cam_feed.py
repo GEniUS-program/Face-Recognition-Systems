@@ -1,7 +1,7 @@
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QWidget, QVBoxLayout, QSizePolicy
 from PyQt6.QtGui import QImage, QPixmap
-from modules.utils.face_recognition import FaceRecognition
+from modules.utils.image_utils.face_recognition import FaceRecognition
 from multiprocessing import Pool, Manager, Lock
 import logging
 import cv2
