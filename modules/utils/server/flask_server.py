@@ -1,10 +1,17 @@
+import numpy as np
+
+import face_recognition
 import mysql.connector
+import sqlalchemy
 import smtplib
 import datetime
 import secrets
 import pickle
+import cv2
 import os
+
 from mysql.connector import Error
+from PIL import Image, ImageDraw, ImageFont
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify, url_for
@@ -17,15 +24,19 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 
 
 app = Flask(__name__)
+
+sql_engine = sqlalchemy.create_engine(
+    'mysql+mysqlconnector://Ndioksiatdian:KPks8kp3N2skABX@Ndioksiatdian.mysql.pythonanywhere-services.com/Ndioksiatdian$default'
+)
 # Setup mail server
-app.config["MAIL_SERVER"] = "smtp.mail.ru"  # mail.ru smtp server
+app.config["MAIL_SERVER"] = "smtp.gmail.com"  # gmail.ru smtp server
 app.config["MAIL_PORT"] = 465  # smtp port
 app.config["MAIL_USE_SSL"] = True  # ssl/tls
-app.config["MAIL_USERNAME"] = "eye-sentinel@mail.ru"
-app.config["MAIL_PASSWORD"] = "0j4zPE3YBM3Rhe7vUgHX"
-app.config["MAIL_DEFAULT_SENDER"] = "eye-sentinel@mail.ru"
+app.config["MAIL_USERNAME"] = "romannikitin081@gmail.com"
+app.config["MAIL_PASSWORD"] = "kztc ezms iijl fvws"
+app.config["MAIL_DEFAULT_SENDER"] = "romannikitin081@gmail.com"
 # Connect to SMTP server
-server = smtplib.SMTP_SSL('smtp.mail.ru', 465)
+server = smtplib.SMTP_SSL(app.config["MAIL_SERVER"], 465)
 server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
 server.auth_plain()
 
@@ -52,25 +63,6 @@ padder = padding.PKCS7(algorithms.AES.block_size).padder()
 unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
 
 
-def create_connection():
-    connection = None
-    try:
-        connection = mysql.connector.connect(
-            host='Ndioksiatdian.mysql.pythonanywhere-services.com',
-            user='Ndioksiatdian',
-            password='KPks8kp3N2skABX',
-            database='Ndioksiatdian$default'
-        )
-        print("Connection to MySQL DB successful")
-    except Error as e:
-        print(f"The error '{e}' occurred")
-
-    return connection
-
-
-connection = create_connection()
-
-
 def encrypt_for_user_rsa(data: bytes, user_id: int) -> bytes:
     global users
     return users[user_id][1].encrypt(
@@ -94,7 +86,7 @@ def decrypt_user_rsa(data: bytes) -> bytes:
     )
 
 
-def encrypt_aes(data: bytes, user_id: int) -> list:
+def encrypt_aes(data: bytes, user_id: int) -> tuple[bytes, bytes]:
     global users, padder
     iv = os.urandom(16)  # AES block size is 16 bytes
 
@@ -122,23 +114,6 @@ def decrypt_aes(data: bytes, iv: bytes, user_id: int) -> bytes:
     return decrypted_data
 
 
-def get_user_id(username, password) -> int: # CONSERVED FOR LATER USE
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute("SELECT id, password, username FROM users;")
-        rows = cursor.fetchall()
-
-        for row in rows:
-            if row[2] == username and row[1] == password:
-                return row[0]
-        else:
-            return None
-
-    except Error as e:
-        print(f"The error '{e}' occurred")
-
-
 def hash_data(data) -> str:
     data_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
     data_hash.update(data.encode())
@@ -147,7 +122,7 @@ def hash_data(data) -> str:
 
 @app.route('/login', methods=['POST', 'GET'])
 def establish_connection():
-    global users, connection, PUBLIC_KEY_SERIALIZED
+    global users, sql_engine, PUBLIC_KEY_SERIALIZED
     data = request.get_json()
 
     client_public_key_pem = data.get("client_public_key")
@@ -162,28 +137,27 @@ def establish_connection():
     else:
         return jsonify({"error": "No public key provided."}), 400
 
-    password = bytes.fromhex(data.get("password"))
-    username = bytes.fromhex(data.get("username"))
-
-    cursor = connection.cursor()
-
+    password = data.get("password")
+    username = data.get("username")
     try:
-        cursor.execute("SELECT id, password, username FROM users;")
-        rows = cursor.fetchall()
+        with sql_engine.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, username, password FROM users;")
 
         for row in rows:
-            if password == row[1].encode() and username == row[2].encode():
+            if password == row[2].hex() and username == row[1].hex():
                 user_id = row[0]
                 break
         else:
             return jsonify({"error": "Access denied."}), 401
-
-    except Error:
+    except Error as e:
+        print(e)
         return jsonify({"error": f"An error occurred"}), 500
     else:
         access_token = create_access_token(identity=str(user_id))
         users[user_id] = [access_token, client_public_key, os.urandom(32)]
-        encrypted_token = encrypt_for_user_rsa(users[user_id][0].encode(), user_id)
+        encrypted_token = encrypt_for_user_rsa(
+            users[user_id][0].encode(), user_id)
         encrypted_server_public_key = encrypt_for_user_rsa(
             PUBLIC_KEY_SERIALIZED.encode(), user_id)
         encrypted_aes_key = encrypt_for_user_rsa(users[user_id][2], user_id)
@@ -192,18 +166,17 @@ def establish_connection():
 
 @app.route('/register_user', methods=['POST'])
 def register_new_user():
-    global to_confirm, server  # connection,
+    global to_confirm, server, sql_engine  # connection,
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
     email = data.get("email")
 
     try:
-        cursor = connection.cursor()
-
-        # Check if the user already exists
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-        user = cursor.fetchone()
+        with sql_engine.connect() as connection:
+            # Check if the user already exists
+            user = connection.execute(
+                "SELECT * FROM users WHERE email = %s", (email,))
 
         if user is not None:
             return jsonify({"error": "User already exists."}), 400
@@ -212,9 +185,10 @@ def register_new_user():
     token = create_access_token(
         identity=email, expires_delta=datetime.timedelta(hours=1))
     print('created token')
-    to_confirm.update({email: [username, password]})
+    to_confirm.update(
+        {email: [bytes.fromhex(username), bytes.fromhex(password)]})
 
-    confirmation_link = f'http://127.0.0.1:5000/confirm?jwt={token}'
+    confirmation_link = f'https://ndioksiatdian.pythonanywhere.com/confirm?jwt={token}'
     print('sending message')
     msg = MIMEMultipart()
     msg['From'] = app.config['MAIL_DEFAULT_SENDER']
@@ -229,21 +203,21 @@ def register_new_user():
 
 
 @app.route('/confirm', methods=['GET'])
-@jwt_required(locations=['query_string']) # looks like http://host:port/confirm?jwt=token
+# looks like http://host:port/confirm?jwt=token
+@jwt_required(locations=['query_string'])
 def confirm_email():
     print('clicked conf link')
-    global to_confirm, connection
+    global to_confirm, sql_engine
     try:
         # Verify the token
         email = get_jwt_identity()  # Get the identity (email) from the token
 
-        username, password = to_confirm.get(email)
+        username, password = to_confirm.get(email)[0], to_confirm.get(email)[1]
 
-        cursor = connection.cursor()
-        cursor.execute(
-            "INSERT INTO users (username, password, email) VALUES (%s, %s, %s);", (username, password, email))
-
-        del to_confirm[email]
+        with sql_engine.connect() as connection:
+            connection.execute(
+                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s);", (username, password, email))
+            del to_confirm[email]
 
         return jsonify({"message": "Email confirmed successfully!"}), 200
     except Exception as e:
@@ -253,46 +227,54 @@ def confirm_email():
 @app.route('/faces', methods=['POST', 'GET'])
 @jwt_required(locations=['headers'])
 def faces_table():
-    global connection
+    global sql_engine
     input_params = request.get_json()
-    encryption = input_params['encrypted'] # aes, rsa, not
-    target = input_params['target'] # add, edit, del, read
+    encryption = input_params['encrypted']  # aes, rsa, not
+    target = input_params['target']  # add, edit, del, read
     user_id = int(get_jwt_identity())
 
     if target == 'add':
         if encryption == 'rsa':
             data = decrypt_user_rsa(bytes.fromhex(input_params['data']))
         elif encryption == 'aes':
-            data = decrypt_aes(bytes.fromhex(input_params['data']), decrypt_user_rsa(bytes.fromhex(input_params['eiv'])), user_id)
-        
-        data = pickle.loads(data)# Convert data form bytes to dictionary
+            data = decrypt_aes(bytes.fromhex(input_params['data']), decrypt_user_rsa(
+                bytes.fromhex(input_params['eiv'])), user_id)
 
-        access_level = data['access_level'] # int
-        vector = data['vector'] # bytes
-        image = data['image'] # bytes
+        data = pickle.loads(data)  # Convert data form bytes to dictionary
 
-        cursor = connection.cursor()
-        cursor.execute(
-            "INSERT INTO faces (acc_id, access_level, vector, image) VALUES (%s, %s);", (user_id, access_level, vector, image)
-        )
+        access_level = data['access_level']  # int
+        vector = data['vector']  # bytes
+        image = data['image']  # bytes
+
+        with sql_engine.connect() as connection:
+            connection.execute(
+                "INSERT INTO faces (acc_id, access_level, vector, image) VALUES (%s, %s);", (
+                    user_id, access_level, vector, image)
+            )
     elif target == 'edit':
         if encryption == 'rsa':
-            new_data = decrypt_user_rsa(bytes.fromhex(input_params['new_data']))
-            old_data = decrypt_user_rsa(bytes.fromhex(input_params['old_data']))
+            new_data = decrypt_user_rsa(
+                bytes.fromhex(input_params['new_data']))
+            old_data = decrypt_user_rsa(
+                bytes.fromhex(input_params['old_data']))
         elif encryption == 'aes':
-            new_data = decrypt_aes(bytes.fromhex(input_params['new_data']), decrypt_user_rsa(bytes.fromhex(input_params['new_eiv'])), user_id)
-            old_data = decrypt_aes(bytes.fromhex(input_params['old_data']), decrypt_user_rsa(bytes.fromhex(input_params['old_eiv'])), user_id)
+            new_data = decrypt_aes(bytes.fromhex(input_params['new_data']), decrypt_user_rsa(
+                bytes.fromhex(input_params['new_eiv'])), user_id)
+            old_data = decrypt_aes(bytes.fromhex(input_params['old_data']), decrypt_user_rsa(
+                bytes.fromhex(input_params['old_eiv'])), user_id)
 
-        data = pickle.loads(data) 
+        data = pickle.loads(data)
 
         face_id = data['face_id']
         access_level = data['access_level']
         vector = data['vector']
         image = data['image']
-        cursor = connection.cursor()
-        cursor.execute(
-            "INSERT INTO faces (acc_id, face_id, access_level, vector, image) VALUES (%s, %s);", (user_id, face_id, access_level, vector, image)
-        )
+        with sql_engine.connect() as connection:
+            connection.execute(
+                "INSERT INTO faces (acc_id, face_id, access_level, vector, image) VALUES (%s, %s);", (
+                    user_id, face_id, access_level, vector, image)
+            )
+
     elif target == 'del':
         if encryption == 'rsa':
             pass
@@ -305,16 +287,118 @@ def faces_table():
             pass
 
 
+@app.route('/face_recognition', methods=['POST'])
+@jwt_required(locations=['headers'])
+def face_recognition_api():
+    input_data = request.get_json()
+    frame = input_data['frame']
+    eiv = input_data['eiv']
+    camera_index = input_data['camera_index']
+    camera_clearance = input_data['camera_clearance']
+    camera_codename = input_data['camera_name']
+    data_to_send = []
+    user_id = int(get_jwt_identity())
 
+    frame = decrypt_aes(bytes.fromhex(
+        frame), decrypt_user_rsa(bytes.fromhex(eiv)), user_id)
+    encoded_frame_np = np.frombuffer(frame, dtype=np.uint8)
+
+    frame = cv2.imdecode(encoded_frame_np, cv2.IMREAD_UNCHANGED)
+
+    face_locations = face_recognition.face_locations(frame)
+    data_to_send.append(face_locations)
+    known_face_encodings, known_face_names, clearances = get_faces(user_id)
+    if not face_locations:
+        return jsonify({"return": "empty"}), 200
+
+    face_encodings = face_recognition.face_encodings(frame, face_locations)
+
+    names = []
+    rec_clear = []
+    for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+
+        matches = face_recognition.compare_faces(
+            known_face_encodings, face_encoding)
+
+        name, clearance = get_recognition_info(
+            clearances, known_face_names, known_face_encodings, matches, face_encoding)
+
+        names.append(name)
+        rec_clear.append(clearance)
+        intent = 1
+        if name == "Unknown":
+            frame = draw_face_rectangle(
+                frame, (top, right, bottom, left), name, 0, camera_codename)
+            intent = 0
+        elif clearance < camera_clearance:
+            frame = draw_face_rectangle(
+                frame, (top, right, bottom, left), name, 0, camera_codename)
+            intent = 0
+        else:
+            frame = draw_face_rectangle(
+                frame, (top, right, bottom, left), name, 1, camera_codename)
+            intent = 1
+
+        save_recognition_info(user_id, name, frame, intent, camera_index)
+
+    data_to_send = [frame, face_locations, names, rec_clear]
+    data_to_send = pickle.dumps(data_to_send)
+    eiv, data_to_send = encrypt_aes(data_to_send, user_id)
+
+    return jsonify({"return": data_to_send.hex(), "eiv": eiv.hex()}), 200
+
+
+def save_recognition_info(user_id, name, image, level, cam_index):
+    global sql_engine
+    with sql_engine.connect() as connection:  # Connect to the database
+        connection.execute(
+            "INSERT INTO faces (acc_id, name, date_time, image, sufficient_livel, cam_index) VALUES (%s, %s, %s, %s, %s);", (
+                user_id, name, datetime.datetime.now(), image, level, cam_index)
+        )
+
+
+def get_recognition_info(clearances, known_face_names, known_face_encodings, matches, face_encoding):
+    if True in matches:
+        face_distances = face_recognition.face_distance(
+            known_face_encodings, face_encoding)
+        best_match_index = np.argmin(face_distances)
+        name = known_face_names[best_match_index]
+        clearance = int(clearances[best_match_index])
+        return name, clearance
+    return "Unknown", 0
+
+
+def get_faces(user_id):
+    global sql_engine
+    with sql_engine.connect() as connection:
+        rows = connection.execute(
+            "SELECT vector, eiv, name, access_level FROM faces WHERE acc_id = %s;", (
+                user_id,)
+        )
+
+    face_encodings = []
+    names = []
+    clearances = []
+    for row in rows:
+        # face_encoding, name, clearance
+        face_encodings.append(decrypt_aes(row[0], row[1], user_id))
+        names.append(decrypt_aes(row[2], row[1], user_id))
+        clearances.append(row[3])
+    return face_encodings, names, clearances
+
+
+def draw_face_rectangle(frame, location, name, des, camera_codename):
+    color = (0, 255, 0) if des else (0, 0, 255)
+    cv2.rectangle(frame, (location[3], location[0]),
+                  (location[1], location[2]), color, 2)
+    frame = Image.fromarray(frame)
+    draw_frame = ImageDraw.Draw(frame)
+    draw_frame.text((location[3], location[0] - 10), f'{camera_codename}\n{name}',
+                    (255, 255, 255), font=ImageFont.truetype('arial.ttf', 20))
+    return np.array(frame)
 
 
 @app.route('/logout', methods=['POST'])
 @jwt_required(locations=['headers'])
 def logout():
     pass
-
-
-
-
-
-app.run(host="127.0.0.1", port=5000, debug=True)

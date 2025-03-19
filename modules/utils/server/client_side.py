@@ -1,5 +1,5 @@
 import requests
-import face_recognition
+import pickle
 import cv2
 import os
 from modules.utils.communicator import Communicate
@@ -55,7 +55,7 @@ class Client:
 
         return decrypted_data
 
-    def encrypt_aes(self, data: bytes) -> list:
+    def encrypt_aes(self, data: bytes) -> tuple[bytes, bytes]:
         iv = os.urandom(16)
 
         padded_data = self.padder.update(
@@ -75,7 +75,7 @@ class Client:
         data_hash.update(data.encode())
         return data_hash.finalize().hex()
 
-    def establish_connection(self, username: str, password: str, email: str) -> None:
+    def establish_connection(self, username: str, password: str) -> None:
 
         self.decr_key = rsa.generate_private_key(
             public_exponent=65537,
@@ -95,18 +95,17 @@ class Client:
         hashed_password = self.hash_data(password)
         hashed_username = self.hash_data(username)
 
-        response = requests.post("http://127.0.0.1:5000/establish_connection", json={
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/login", json={
             "client_public_key": self.other_enc_key.hex(),
             "password": hashed_password,
-            "username": hashed_username,
-            "email": email
+            "username": hashed_username
         })
 
         if response.status_code != 200:
             print('error code', response.status_code)
             pass
-        response = response.json()
-        encrypted_server_key = bytes.fromhex(response["server_public_key"])
+        res_data = response.json()
+        encrypted_server_key = bytes.fromhex(res_data["server_public_key"])
         decrypted_server_key = self.decrypt_rsa(encrypted_server_key)
         self.enc_key = serialization.load_pem_private_key(
             decrypted_server_key,
@@ -114,19 +113,19 @@ class Client:
         )
 
         # acquire token
-        self.token = bytes.fromhex(response["token"])
+        self.token = bytes.fromhex(res_data["token"])
         self.token = self.decrypt_rsa(self.token).decode()
 
-        self.acc_id = response["user_id"]
+        self.acc_id = res_data["user_id"]
 
-        self.large_data_key = bytes.fromhex(response["aes_key"])
+        self.large_data_key = bytes.fromhex(res_data["aes_key"])
         self.large_data_key = self.decrypt_rsa(self.large_data_key)
 
     def register_user(self, username: str, password: str, email: str) -> None:
         hashed_password = self.hash_data(password)
         hashed_username = self.hash_data(username)
 
-        response = requests.post("http://127.0.0.1:5000/register_user", json={
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/register_user", json={
             "username": hashed_username,
             "password": hashed_password,
             "email": email
@@ -183,7 +182,7 @@ class Client:
             target (str): tells the server what to do with the db. Can be: "add", "read", "edit", "del".
         """
 
-        index = 'http://127.0.0.1:5000/faces/'
+        index = 'https://ndioksiatdian.pythonanywhere.com/faces/'
 
         if target == "add":
             eiv = None
@@ -257,3 +256,23 @@ class Client:
             
         else:
             return {"success": False, "reason":"invalid target"}
+        
+    def face_recognition(self, frame: bytes, camera_clearance: int, camera_name: str, camera_index: int):
+        eiv, encrypted_frame = self.encrypt_aes(frame)
+        json = {
+            "frame": encrypted_frame.hex(),
+            "eiv": eiv.hex(),
+            "camera_clearance": camera_clearance,
+            "camera_name": camera_name,
+            "camera_index": camera_index
+        }
+        print('Sending face recognition request...')
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/face_recognition", json=json, headers={"Authorization": f"Bearer {self.token}"})
+
+        data = response.json()
+
+        data = self.decrypt_aes(bytes.fromhex(data["data"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
+
+        data = pickle.loads(data)
+
+        return data
