@@ -26,6 +26,12 @@ class CameraWorker(QObject):
         self.pool = Pool(processes=5)
         self.manager = Manager()
         self.lock = self.manager.Lock()
+        self.bboxes = []
+        self.names = []
+        self.frame_count = 0
+        self.face_detection_interval = 15  # Detect faces every 15 frames
+        self.face_tracking_interval = 5  # Track faces every 5 frames
+        self.movement_threshold = 175  # Define a threshold for sudden movement
         # Initialize your camera settings
         self.cam, self.cam_cl = 0, 0
         with open('./source/data/cameras.txt', 'r', encoding='utf-8') as f:
@@ -35,11 +41,29 @@ class CameraWorker(QObject):
                     self.cam = line.split(';')[1]
                     self.cam_cl = line.split(';')[2]
 
-    def create_new_tracker(self, box, frame):
-        # Use KCF for object tracking
-        tracker = cv2.legacy.TrackerKCF().create()
-        tracker.init(frame, box)
-        return tracker
+    def create_trackers(self, frame): # this is where we send the frame to face_recognition to assign the correct names to the faces
+        global example_names, trackers
+        faces = face_recognition.face_locations(frame)
+        
+        data = self.parent.client.face_recognition(frame.imencode().tobytes(), self.cam_cl, self.cam, self.camera_index)
+        frame_new, locations, names, clearances = data[0], data[1], data[2], data[3]
+        for i, (location, name, clearance_status) in enumerate(zip(locations, names, clearances)):
+            if any(name in i for i in self.object_trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
+                #delete the tracker and replace it with a new one
+                top, right, bottom, left = location  # Unpack the coordinates
+                tracker = cv2.TrackerCSRT_create()
+                tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
+                ind = 0
+                for i in range(len(self.object_trackers)):
+                    if self.object_trackers[i][1] == name:
+                        ind = i
+                        break
+                self.object_trackers[ind] = [tracker, name, (left, top), clearance_status]
+                continue
+            top, right, bottom, left = location  # Unpack the coordinates
+            tracker = cv2.TrackerCSRT_create()
+            tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
+            self.object_trackers.append([tracker, name, (left, top), clearance_status])  # Store the initial position
 
     def check_new_faces(self, frame):
         print('checking for new faces')
@@ -56,17 +80,56 @@ class CameraWorker(QObject):
 
         if trackers_int_new != faces_int:
             print('updating trackers, recognizing faces')
-            data = self.parent.client.face_recognition(frame.imencode().tobytes(), self.cam_cl, self.cam, self.camera_index)
-            frame_new, locations, names, clearances = data[0], data[1], data[2], data[3]
-            self.object_trackers = [[self.create_new_tracker(box, frame_new), name, clearance] for box, name, clearance in (locations, names, clearances)]
             
-            for location, name, clearance in zip(locations, names, clearances):
-                frame = self.draw_face_rectangle(frame_new, location, name, clearance)
+    def check_trackers(self, frame, bboxes=[], names=[]):
+        global trackers
+        new_faces = False
+        bboxes = bboxes
+        names = names
+        if self.frame_count % self.face_detection_interval == 0:
+            faces = face_recognition.face_locations(frame)
+            if len(faces) > len(trackers):
+                print('more faces detected than the amount of trackers')
+                self.create_trackers(frame)
+                new_faces = True
+
+        if self.frame_count % self.face_tracking_interval == 0:
+            bboxes = []
+            # Update existing trackers
+            for i, (tracker, name, last_position) in enumerate(trackers):
+                success, bbox = tracker.update(frame)
+                if success:
+                    bboxes.append(bbox)
+                    names.append(name)
+                    x, y, w, h = [int(v) for v in bbox]
+                    current_position = (x, y)
+
+                    # Calculate movement distance
+                    distance_moved = np.sqrt((current_position[0] - last_position[0]) ** 2 + (current_position[1] - last_position[1]) ** 2)
+
+                    # Check if the movement exceeds the threshold
+                    if distance_moved > self.movement_threshold:
+                        print(f'lost tracker for {name} to sudden movement')
+                        cv2.putText(frame, f"Tracker for {name} lost due to sudden movement", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+                        del trackers[i]  # Remove the tracker
+                    else:
+                        # Update the last known position
+                        trackers[i][2] = current_position  # Update last_position
+                        
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                        cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                else:
+                    print('lost tracking for', name)
+                    cv2.putText(frame, f"Tracker for {name} lost", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+                    del trackers[i]
         else:
-            for tracker, name, clearance in zip(*self.object_trackers):
-                success, box = tracker.update(frame)
-                frame = self.draw_face_rectangle(frame, box, name, clearance)
-        return frame
+            for (box, name) in zip(bboxes, names):
+                x, y, w, h = [int(v) for v in box]
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+
+        return frame, bboxes, names
 
     def draw_face_rectangle(self, frame, location, name, clearance):
         color = (0, 255, 0) if clearance else (0, 0, 255)

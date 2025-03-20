@@ -1,30 +1,81 @@
 import cv2
+import face_recognition
+import numpy as np
 
-# Initialize video capture
+# Replace 0 with filename if needed
 video = cv2.VideoCapture(0)
 
-# Read the first frame
-ret, frame = video.read()
-if not ret:
-    print("Error reading video")
-    exit()
-
-# Create a list to store individual trackers and their IDs
+# Initialize variables
 trackers = []
-tracker_ids = []
+example_names = ['John', 'Jane', 'Bob', 'Andrew', 'Alex', 'Emily', 'Olivia', 'Emma', 'Sophia', 'Isabella',
+                 'Mia', 'Charlotte', 'Amelia', 'Harper', 'Ella', 'Abigail', 'Emily', 'Elizabeth', 'Mila', 'Ava']
+bboxes = []
+names = []
+frame_count = 0
+face_detection_interval = 15  # Detect faces every 15 frames
+face_tracking_interval = 5  # Track faces every 5 frames
+movement_threshold = 175  # Define a threshold for sudden movement
 
-# Select ROIs for each object to track
-print("Select ROIs for each object and press ENTER to start tracking.")
-while True:
-    bbox = cv2.selectROI("MultiTracker", frame, fromCenter=False)
-    tracker = cv2.legacy.TrackerKCF().create()
-    tracker.init(frame, bbox)
-    trackers.append(tracker)
-    tracker_ids.append(len(tracker_ids) + 1)  # Assign a unique ID to each tracker
-    print(f"Added tracker {len(tracker_ids)} with bounding box: {bbox}")
-    k = cv2.waitKey(0) & 0xFF
-    if k == 13:  # Press ENTER to finish selecting ROIs
-        break
+def create_trackers(frame): # this is where we send the frame to face_recognition to assign the correct names to the faces
+    faces = face_recognition.face_locations(frame)
+    global example_names, trackers
+    for face, name in zip(faces, example_names):
+        #if any(name in i for i in trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
+        #    continue# 
+        top, right, bottom, left = face  # Unpack the coordinates
+        tracker = cv2.TrackerCSRT_create()
+        tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
+        trackers.append([tracker, name, (left, top)])  # Store the initial position
+
+def check_trackers(frame, bboxes=[], names=[]):
+    global trackers
+    new_faces = False
+    bboxes = bboxes
+    names = names
+    if frame_count % face_detection_interval == 0:
+        faces = face_recognition.face_locations(frame)
+        if len(faces) > len(trackers):
+            print('more faces detected than the amount of trackers')
+            create_trackers(frame)
+            new_faces = True
+
+    if frame_count % face_tracking_interval == 0:
+        bboxes = []
+        # Update existing trackers
+        for i, (tracker, name, last_position) in enumerate(trackers):
+            success, bbox = tracker.update(frame)
+            if success:
+                bboxes.append(bbox)
+                names.append(name)
+                x, y, w, h = [int(v) for v in bbox]
+                current_position = (x, y)
+
+                # Calculate movement distance
+                distance_moved = np.sqrt((current_position[0] - last_position[0]) ** 2 + (current_position[1] - last_position[1]) ** 2)
+
+                # Check if the movement exceeds the threshold
+                if distance_moved > movement_threshold:
+                    print(f'lost tracker for {name} to sudden movement')
+                    cv2.putText(frame, f"Tracker for {name} lost due to sudden movement", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+                    del trackers[i]  # Remove the tracker
+                else:
+                    # Update the last known position
+                    trackers[i][2] = current_position  # Update last_position
+
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            else:
+                print('lost tracking for', name)
+                cv2.putText(frame, f"Tracker for {name} lost", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+                del trackers[i]
+    else:
+        for (box, name) in zip(bboxes, names):
+            x, y, w, h = [int(v) for v in box]
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+
+    return frame, bboxes, names
 
 # Main tracking loop
 while True:
@@ -32,19 +83,8 @@ while True:
     if not ret:
         break
 
-    # Update each tracker individually
-    for i, (tracker, tracker_id) in enumerate(zip(trackers, tracker_ids)):
-        success, bbox = tracker.update(frame)
-
-        # Check if the tracker is successful
-        if success:
-            x, y, w, h = [int(v) for v in bbox]
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(frame, f"Tracker {tracker_id}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
-        else:
-            # If the tracker fails, mark it as failed
-            cv2.putText(frame, f"Tracker {tracker_id} failed", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
-            print(f"Tracker {tracker_id} failed!")
+    frame_count += 1
+    frame, bboxes, names = check_trackers(frame, bboxes, names)
 
     # Display the frame
     cv2.imshow("MultiTracker", frame)

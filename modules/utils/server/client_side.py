@@ -103,6 +103,7 @@ class Client:
 
         if response.status_code != 200:
             print('error code', response.status_code)
+            print(response.json()["error"])
             pass
         res_data = response.json()
         encrypted_server_key = bytes.fromhex(res_data["server_public_key"])
@@ -271,7 +272,7 @@ class Client:
 
         data = response.json()
 
-        data = self.decrypt_aes(bytes.fromhex(data["data"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
+        data = self.decrypt_aes(bytes.fromhex(data["return"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
 
         data = pickle.loads(data)
 
