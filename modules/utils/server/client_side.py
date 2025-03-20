@@ -22,8 +22,8 @@ class Client:
         self.unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
         self.acc_id = None
 
-        reg_com = Communicate()
-        self.successful_reg_signal = reg_com.signal
+        self.reg_com = Communicate()
+        self.successful_reg_signal = self.reg_com.signal
 
     def decrypt_rsa(self, data: bytes) -> bytes:
         return self.decr_key.decrypt(
@@ -104,7 +104,7 @@ class Client:
         if response.status_code != 200:
             print('error code', response.status_code)
             print(response.json()["error"])
-            pass
+            return {"success": False, "reason": response.json()["error"]}
         res_data = response.json()
         encrypted_server_key = bytes.fromhex(res_data["server_public_key"])
         decrypted_server_key = self.decrypt_rsa(encrypted_server_key)
@@ -121,6 +121,7 @@ class Client:
 
         self.large_data_key = bytes.fromhex(res_data["aes_key"])
         self.large_data_key = self.decrypt_rsa(self.large_data_key)
+        return {"success": True}
 
     def register_user(self, username: str, password: str, email: str) -> None:
         hashed_password = self.hash_data(password)

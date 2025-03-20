@@ -6,7 +6,7 @@ class LoginWindow(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(LoginWindow, self).__init__(parent)
         self.setWindowTitle("Вход")
-        self.setFixedSize(350, 300)
+        self.setFixedSize(400, 350)
 
         self.stacked_widget = QtWidgets.QStackedWidget()
         self.setLayout(QtWidgets.QVBoxLayout())
@@ -41,6 +41,7 @@ class LoginWindow(QtWidgets.QDialog):
         
         self.error_text = QtWidgets.QLabel()
         self.error_text.setStyleSheet("color: red;")
+        self.error_text.setWordWrap(True)
         self.error_text.hide()
 
         self.login_button = QtWidgets.QPushButton("Войти")
@@ -82,6 +83,7 @@ class LoginWindow(QtWidgets.QDialog):
 
         self.error_text = QtWidgets.QLabel()
         self.error_text.setStyleSheet("color: red;")
+        self.error_text.setWordWrap(True)
         self.error_text.hide()
 
         self.register_submit_button = QtWidgets.QPushButton(
@@ -119,7 +121,7 @@ class LoginWindow(QtWidgets.QDialog):
     def clicked_register_button(self):
         if self.password_input_reg.text() == self.confirm_password_input.text() and self.username_input_reg.text() != '' and self.password_input_reg.text() != '' and self.email_input.text() != '':
             self.register_signal.emit(
-                [self.username_input.text(), self.password_input.text(), self.email_input.text()])
+                [self.username_input_reg.text(), self.password_input_reg.text(), self.email_input.text()])
         else:
             QtWidgets.QMessageBox.warning(
                 self, "Ошибка", "Произошла ошибка, проверьте правильность введенных данных")

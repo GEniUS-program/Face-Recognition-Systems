@@ -39,6 +39,7 @@ app.config["MAIL_DEFAULT_SENDER"] = "romannikitin081@gmail.com"
 server = smtplib.SMTP_SSL(app.config["MAIL_SERVER"], 465)
 server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
 server.auth_plain()
+#server.connect(host=app.config["MAIL_SERVER"], port=app.config["MAIL_PORT"])
 
 app.config['JWT_SECRET_KEY'] = 'super-secret'  # Change this in production
 jwt = JWTManager(app)
@@ -146,14 +147,14 @@ def establish_connection():
             rows = rows.fetchall()
 
         for row in rows:
-            if password.hex() == row['password'].hex() and username.hex() == row['username'].hex():
+            if password == row['password'].hex() and username == row['username'].hex():
                 user_id = row[0]
                 break
         else:
             return jsonify({"error": "Access denied."}), 401
     except Error as e:
         print(e)
-        return jsonify({"error": f"An error occurred {e}"}), 500
+        return jsonify({"error": f"An error occurred"}), 500
     else:
         access_token = create_access_token(identity=str(user_id))
         users[user_id] = [access_token, client_public_key, os.urandom(32)]
@@ -182,7 +183,7 @@ def register_new_user():
         if user is not None:
             return jsonify({"error": "User already exists."}), 400
     except:
-        return jsonify({"error": "User already exists."}), 400
+        pass
     token = create_access_token(
         identity=email, expires_delta=datetime.timedelta(hours=1))
     print('created token')
@@ -337,16 +338,10 @@ def face_recognition_api():
         rec_clear.append(clearance)
         intent = 1
         if name == "Unknown":
-            frame = draw_face_rectangle(
-                frame, (top, right, bottom, left), name, 0, camera_codename)
             intent = 0
         elif clearance < camera_clearance:
-            frame = draw_face_rectangle(
-                frame, (top, right, bottom, left), name, 0, camera_codename)
             intent = 0
         else:
-            frame = draw_face_rectangle(
-                frame, (top, right, bottom, left), name, 1, camera_codename)
             intent = 1
 
         save_recognition_info(user_id, name, frame, intent, camera_index)
@@ -360,11 +355,21 @@ def face_recognition_api():
 
 def save_recognition_info(user_id, name, image, level, cam_index):
     global sql_engine
+    image = cv2.imencode('.jpg', image)[1].tobytes()
+    eiv, image = encrypt_aes(image, user_id)
     with sql_engine.connect() as connection:  # Connect to the database
         connection.execute(
-            "INSERT INTO faces (acc_id, name, date_time, image, sufficient_livel, cam_index) VALUES (%s, %s, %s, %s, %s);", (
-                user_id, name, datetime.datetime.now(), image, level, cam_index)
+            "INSERT INTO recognition_history (acc_id, name, date_time, image, sufficient_livel, cam_index, eiv) VALUES (:user_id, :name, :date_time, :image, :level, :cam_index, :eiv);", {
+                'user_id': user_id,
+                'name': name,
+                'date_time': datetime.datetime.now(),
+                'image': image,
+                'level': level,
+                'cam_index': cam_index,
+                'eiv': eiv
+            }
         )
+
 
 
 def get_recognition_info(clearances, known_face_names, known_face_encodings, matches, face_encoding):
@@ -382,8 +387,9 @@ def get_faces(user_id):
     global sql_engine
     with sql_engine.connect() as connection:
         rows = connection.execute(
-            "SELECT vector, eiv, name, access_level FROM faces WHERE acc_id = %s;", (
-                user_id,)
+            "SELECT vector, eiv, name, access_level FROM faces WHERE acc_id = :user_id;", {
+                'user_id': user_id
+            }
         )
 
     face_encodings = []
@@ -395,17 +401,6 @@ def get_faces(user_id):
         names.append(decrypt_aes(row[2], row[1], user_id))
         clearances.append(row[3])
     return face_encodings, names, clearances
-
-
-def draw_face_rectangle(frame, location, name, des, camera_codename):
-    color = (0, 255, 0) if des else (0, 0, 255)
-    cv2.rectangle(frame, (location[3], location[0]),
-                  (location[1], location[2]), color, 2)
-    frame = Image.fromarray(frame)
-    draw_frame = ImageDraw.Draw(frame)
-    draw_frame.text((location[3], location[0] - 10), f'{camera_codename}\n{name}',
-                    (255, 255, 255), font=ImageFont.truetype('arial.ttf', 20))
-    return np.array(frame)
 
 
 @app.route('/logout', methods=['POST'])

@@ -3,9 +3,11 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
 from multiprocessing import Pool, Manager, Lock
 from PIL import Image, ImageDraw, ImageFont
 from PyQt6.QtGui import QImage, QPixmap
+from facenet_pytorch import MTCNN
 import face_recognition
 import numpy as np
 import logging
+import torch
 import time
 import cv2
 import gc
@@ -21,17 +23,17 @@ class CameraWorker(QObject):
         self.object_trackers = []
         self.parent = parent
         self.running = False
-        self.faces = list()
         self.frame_counter = 6
         self.pool = Pool(processes=5)
         self.manager = Manager()
         self.lock = self.manager.Lock()
+        self.mtcnn = MTCNN(keep_all=True, device='cuda' if torch.cuda.is_available() else 'cpu')
         self.bboxes = []
         self.names = []
         self.frame_count = 0
-        self.face_detection_interval = 15  # Detect faces every 15 frames
-        self.face_tracking_interval = 5  # Track faces every 5 frames
-        self.movement_threshold = 175  # Define a threshold for sudden movement
+        self.face_detection_interval = 20  # Detect faces every 15 frames
+        self.face_tracking_interval = 10  # Track faces every 5 frames
+        self.movement_threshold = 50  # Define a threshold for sudden movement
         # Initialize your camera settings
         self.cam, self.cam_cl = 0, 0
         with open('./source/data/cameras.txt', 'r', encoding='utf-8') as f:
@@ -41,13 +43,10 @@ class CameraWorker(QObject):
                     self.cam = line.split(';')[1]
                     self.cam_cl = line.split(';')[2]
 
-    def create_trackers(self, frame): # this is where we send the frame to face_recognition to assign the correct names to the faces
-        global example_names, trackers
-        faces = face_recognition.face_locations(frame)
-        
+    def create_trackers(self, frame, faces): # this is where we send the frame to face_recognition to assign the correct names to the faces
         data = self.parent.client.face_recognition(frame.imencode().tobytes(), self.cam_cl, self.cam, self.camera_index)
         frame_new, locations, names, clearances = data[0], data[1], data[2], data[3]
-        for i, (location, name, clearance_status) in enumerate(zip(locations, names, clearances)):
+        for i, (location, name, clearance_status) in enumerate(zip(faces, names, clearances)):
             if any(name in i for i in self.object_trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
                 #delete the tracker and replace it with a new one
                 top, right, bottom, left = location  # Unpack the coordinates
@@ -60,38 +59,34 @@ class CameraWorker(QObject):
                         break
                 self.object_trackers[ind] = [tracker, name, (left, top), clearance_status]
                 continue
+
             top, right, bottom, left = location  # Unpack the coordinates
             tracker = cv2.TrackerCSRT_create()
             tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
             self.object_trackers.append([tracker, name, (left, top), clearance_status])  # Store the initial position
 
-    def check_new_faces(self, frame):
-        print('checking for new faces')
-        trackers_int = len(self.object_trackers)
-        faces = face_recognition.face_locations(frame)
-        faces_int = len(faces)
-
-        for i in trackers_int:
-            success, _ = self.object_trackers[i][0].update(frame)
-            if not success:
-                del self.object_trackers[i]
-
-        trackers_int_new = len(self.object_trackers)
-
-        if trackers_int_new != faces_int:
-            print('updating trackers, recognizing faces')
-            
     def check_trackers(self, frame, bboxes=[], names=[]):
         global trackers
-        new_faces = False
         bboxes = bboxes
         names = names
         if self.frame_count % self.face_detection_interval == 0:
-            faces = face_recognition.face_locations(frame)
-            if len(faces) > len(trackers):
-                print('more faces detected than the amount of trackers')
-                self.create_trackers(frame)
-                new_faces = True
+            set_faces = []
+
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            #MTCNN detection
+            boxes, _ = self.mtcnn.detect(rgb_frame)  # Pass the RGB to MTCNN
+            if boxes is not None:
+                for box in boxes:
+                    x1, y1, x2, y2 = box
+                    top = int(y1)
+                    right = int(x2)
+                    bottom = int(y2)
+                    left = int(x1)
+                    set_faces.append((top, right, bottom, left))
+
+            if len(set_faces) >= len(trackers):
+                self.create_trackers(frame, set_faces)
 
         if self.frame_count % self.face_tracking_interval == 0:
             bboxes = []
@@ -109,18 +104,14 @@ class CameraWorker(QObject):
 
                     # Check if the movement exceeds the threshold
                     if distance_moved > self.movement_threshold:
-                        print(f'lost tracker for {name} to sudden movement')
-                        cv2.putText(frame, f"Tracker for {name} lost due to sudden movement", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
                         del trackers[i]  # Remove the tracker
                     else:
                         # Update the last known position
                         trackers[i][2] = current_position  # Update last_position
-                        
+
                         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                         cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
                 else:
-                    print('lost tracking for', name)
-                    cv2.putText(frame, f"Tracker for {name} lost", (100, 80 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
                     del trackers[i]
         else:
             for (box, name) in zip(bboxes, names):
@@ -157,7 +148,7 @@ class CameraWorker(QObject):
             if i == self.frame_counter:
                 logging.info("Attempting to call compare_faces...")
                 try:
-                    frame = self.check_new_faces(frame)
+                    frame, self.bboxes, self.names = self.check_trackers(frame, self.bboxes, self.names)
                 except Exception as e:
                     logging.error(f'Error in compare_faces: {e}')
                 self.frameCaptured.emit(frame)

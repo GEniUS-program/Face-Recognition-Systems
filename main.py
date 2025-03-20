@@ -96,25 +96,28 @@ class MainUI(QtWidgets.QMainWindow):
         pass
 
     def get_login_info(self):
-        abort = None
 
         self.login_widget = LoginWindow()
 
         self.login_widget.login_signal.connect(
             lambda x: self.process_login_info(x))
-        abort = self.login_widget.abort_signal.connect(
+        self.login_widget.abort_signal.connect(
             lambda x: self.closeEvent(x))
         self.login_widget.register_signal.connect(
             lambda x: self.register_user(x))
 
         self.login_widget.exec()
 
-        if abort is not None:
-            self.read_config()
+            
 
     def process_login_info(self, login_info):
-        self.client.establish_connection(login_info[0], login_info[1])
-        self.login_info = login_info
+        result = self.client.establish_connection(login_info[0], login_info[1])
+        if result["success"]:
+            self.read_config()
+            self.login_widget.close()
+        else:
+            QtWidgets.QMessageBox.warning(
+                self, "Ошибка", f"Произошла ошибка: {result['reason']}")
 
     def get_cameras(self):
         widget = CameraSelectorWidget()
@@ -139,6 +142,7 @@ class MainUI(QtWidgets.QMainWindow):
                 
     def process_reg(self, signal):
         if signal["success"]:
+            del self.login_widget
             self.get_login_info()
             self.login_widget.error_text.hide()
         else:
