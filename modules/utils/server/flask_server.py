@@ -141,18 +141,19 @@ def establish_connection():
     username = data.get("username")
     try:
         with sql_engine.connect() as connection:
-            rows = connection.execute(
-                "SELECT id, username, password FROM users;")
+            rows = connection.execute(sqlalchemy.text(
+                "SELECT id, username, password FROM users;"))
+            rows = rows.fetchall()
 
         for row in rows:
-            if password == row[2].hex() and username == row[1].hex():
+            if password.hex() == row['password'].hex() and username.hex() == row['username'].hex():
                 user_id = row[0]
                 break
         else:
             return jsonify({"error": "Access denied."}), 401
     except Error as e:
         print(e)
-        return jsonify({"error": f"An error occurred"}), 500
+        return jsonify({"error": f"An error occurred {e}"}), 500
     else:
         access_token = create_access_token(identity=str(user_id))
         users[user_id] = [access_token, client_public_key, os.urandom(32)]
@@ -176,12 +177,12 @@ def register_new_user():
         with sql_engine.connect() as connection:
             # Check if the user already exists
             user = connection.execute(
-                "SELECT * FROM users WHERE email = %s", (email,))
+                "SELECT * FROM users WHERE email = :s", {'s': email}).fetchone()
 
         if user is not None:
             return jsonify({"error": "User already exists."}), 400
     except:
-        pass
+        return jsonify({"error": "User already exists."}), 400
     token = create_access_token(
         identity=email, expires_delta=datetime.timedelta(hours=1))
     print('created token')
@@ -216,7 +217,11 @@ def confirm_email():
 
         with sql_engine.connect() as connection:
             connection.execute(
-                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s);", (username, password, email))
+                "INSERT INTO users (username, password, email) VALUES (:username, :password, :email);", {
+                    'username': username,
+                    'password': password,
+                    'email': email
+                })
             del to_confirm[email]
 
         return jsonify({"message": "Email confirmed successfully!"}), 200
@@ -248,8 +253,11 @@ def faces_table():
 
         with sql_engine.connect() as connection:
             connection.execute(
-                "INSERT INTO faces (acc_id, access_level, vector, image) VALUES (%s, %s);", (
-                    user_id, access_level, vector, image)
+                "INSERT INTO faces (acc_id, access_level, vector, image) VALUES (:user_id, :access_level, :vector, :image);", {
+                    'user_id': user_id,
+                    'access_level': access_level,
+                    'vector': vector,
+                    'image': image}
             )
     elif target == 'edit':
         if encryption == 'rsa':
@@ -265,14 +273,16 @@ def faces_table():
 
         data = pickle.loads(data)
 
-        face_id = data['face_id']
         access_level = data['access_level']
         vector = data['vector']
         image = data['image']
         with sql_engine.connect() as connection:
             connection.execute(
-                "INSERT INTO faces (acc_id, face_id, access_level, vector, image) VALUES (%s, %s);", (
-                    user_id, face_id, access_level, vector, image)
+                "INSERT INTO faces (acc_id, access_level, vector, image) VALUES (:user_id, :access_level, :vector, :image);", {
+                    'user_id': user_id,
+                    'access_level': access_level,
+                    'vector': vector,
+                    'image': image}
             )
 
     elif target == 'del':
@@ -401,4 +411,7 @@ def draw_face_rectangle(frame, location, name, des, camera_codename):
 @app.route('/logout', methods=['POST'])
 @jwt_required(locations=['headers'])
 def logout():
-    pass
+    global users
+    user_id = get_jwt_identity()
+    del users[user_id]
+    return jsonify({"message": "Logout successful!"}), 200
