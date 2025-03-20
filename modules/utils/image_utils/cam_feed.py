@@ -44,7 +44,7 @@ class CameraWorker(QObject):
                     self.cam_cl = line.split(';')[2]
 
     def create_trackers(self, frame, faces): # this is where we send the frame to face_recognition to assign the correct names to the faces
-        data = self.parent.client.face_recognition(frame.imencode().tobytes(), self.cam_cl, self.cam, self.camera_index)
+        data = self.parent.client.face_recognition(frame.imencode().tobytes(), self.cam_cl, self.cam, self.camera_index, faces)
         frame_new, locations, names, clearances = data[0], data[1], data[2], data[3]
         for i, (location, name, clearance_status) in enumerate(zip(faces, names, clearances)):
             if any(name in i for i in self.object_trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
