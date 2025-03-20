@@ -146,7 +146,7 @@ def establish_connection():
             rows = rows.fetchall()
 
         for row in rows:
-            if password.hex() == row['password'].hex() and username.hex() == row['username'].hex():
+            if password == row['password'].hex() and username == row['username'].hex():
                 user_id = row[0]
                 break
         else:
