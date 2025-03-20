@@ -307,6 +307,7 @@ def face_recognition_api():
     camera_index = input_data['camera_index']
     camera_clearance = input_data['camera_clearance']
     camera_codename = input_data['camera_name']
+    face_locations = pickle.loads(bytes.fromhex(input_data['faces']))
     data_to_send = []
     user_id = int(get_jwt_identity())
 
@@ -315,8 +316,6 @@ def face_recognition_api():
     encoded_frame_np = np.frombuffer(frame, dtype=np.uint8)
 
     frame = cv2.imdecode(encoded_frame_np, cv2.IMREAD_UNCHANGED)
-
-    face_locations = face_recognition.face_locations(frame)
     data_to_send.append(face_locations)
     known_face_encodings, known_face_names, clearances = get_faces(user_id)
     if not face_locations:
@@ -326,7 +325,7 @@ def face_recognition_api():
 
     names = []
     rec_clear = []
-    for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+    for face_encoding in face_encodings:
 
         matches = face_recognition.compare_faces(
             known_face_encodings, face_encoding)

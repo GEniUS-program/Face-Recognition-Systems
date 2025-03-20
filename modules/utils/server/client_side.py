@@ -259,14 +259,15 @@ class Client:
         else:
             return {"success": False, "reason":"invalid target"}
         
-    def face_recognition(self, frame: bytes, camera_clearance: int, camera_name: str, camera_index: int):
+    def face_recognition(self, frame: bytes, camera_clearance: int, camera_name: str, camera_index: int, faces: list):
         eiv, encrypted_frame = self.encrypt_aes(frame)
         json = {
             "frame": encrypted_frame.hex(),
             "eiv": eiv.hex(),
             "camera_clearance": camera_clearance,
             "camera_name": camera_name,
-            "camera_index": camera_index
+            "camera_index": camera_index,
+            "faces": pickle.dumps(faces).hex()
         }
         print('Sending face recognition request...')
         response = requests.post("https://ndioksiatdian.pythonanywhere.com/face_recognition", json=json, headers={"Authorization": f"Bearer {self.token}"})
