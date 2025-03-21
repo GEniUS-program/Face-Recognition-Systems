@@ -6,7 +6,7 @@ import cv2
 import os
 from modules.utils.communicator import Communicate
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization, hashes, padding
+from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
@@ -47,18 +47,16 @@ class Client:
         )
 
     def decrypt_aes(self, data: bytes, iv: bytes) -> bytes:
-        
+
         cipher = Cipher(algorithms.AES(self.large_data_key), modes.CFB(iv))
         decryptor = cipher.decryptor()
         decrypted_data = decryptor.update(data) + decryptor.finalize()
 
-
         return decrypted_data
 
-    def encrypt_aes(self, data: bytes, iv: None|bytes=None) -> tuple[bytes, bytes]:
+    def encrypt_aes(self, data: bytes, iv: None | bytes = None) -> tuple[bytes, bytes]:
         if iv is None:
             iv = os.urandom(16)
-        
 
         cipher = Cipher(algorithms.AES(self.large_data_key),
                         modes.CFB(iv), backend=default_backend())
@@ -101,31 +99,78 @@ class Client:
         })
 
         if response.status_code != 200:
-            print('error code', response.status_code)
+            print('error code when establishing connection', response.status_code)
             print(response.json()["error"])
             return {"success": False, "reason": response.json()["error"]}
-        
+
         res_data = response.json()
 
         iv = self.decrypt_rsa(bytes.fromhex(res_data["eiv"]))
-        
+        iv_hash1 = res_data["iv_hash"]
+        iv_hash2 = self.hash_data(iv)
+        res = self.check_iv_integrity(iv, hash1=iv_hash1, hash2=iv_hash2)
+        if not res:
+            return {"success": False, "reason": "invalid initialization vector"}
+
         self.large_data_key = bytes.fromhex(res_data["aes_key"])
         self.large_data_key = self.decrypt_rsa(self.large_data_key)
+        hash1 = res_data["aes_hash"]
+        hash2 = self.hash_data(self.large_data_key)
+        res = self.check_integrity_by_hash(hash1, hash2, 'aes key')
+        if not res:
+            return {"success": False, "reason": "invalid aes key"}
 
-        decrypted_server_key = self.decrypt_aes(bytes.fromhex(res_data["server_public_key"]), iv)
+        decrypted_server_key = self.decrypt_aes(
+            bytes.fromhex(res_data["server_public_key"]), iv)
+        hash11 = res_data["server_public_key_hash"]
+        hash22 = self.hash_data(decrypted_server_key)
+        res = self.check_integrity_by_hash(hash11, hash22, 'server public key')
+        if not res:
+            return {"success": False, "reason": "invalid server public key"}
 
         self.enc_key = serialization.load_pem_public_key(
             decrypted_server_key,
             backend=default_backend()
         )
-                
+
         # acquire token
         self.token = bytes.fromhex(res_data["token"])
         self.token = self.decrypt_aes(self.token, iv).decode()
+        hash12 = res_data["token_hash"]
+        hash23 = self.hash_data(self.token.encode())
+        res = self.check_integrity_by_hash(hash12, hash23, 'token')
+        if not res:
+            return {"success": False, "reason": "invalid token"}
 
         self.acc_id = res_data["user_id"]
 
         return {"success": True}
+
+    def check_iv_integrity(self, iv, lens=16, hash1='', hash2=''):
+        safe = True
+        print('checking initialization vector...')
+
+        if len(iv) == lens:
+            print('\tIV length OK;')
+        else:
+            safe = False
+            print('\tIV length different!')
+
+        if hash1 == hash2:
+            print('\tIV hash OK;')
+        else:
+            safe = False
+            print('\tIV hash different!')
+        return safe
+
+    def check_integrity_by_hash(self, hash1, hash2, name='data'):
+        print(f'checking {name} integrity...')
+        if hash1 == hash2:
+            print('\tData hash OK;')
+            return True
+        else:
+            print('\tData hash different!')
+            return False
 
     def register_user(self, username: str, password: str, email: str) -> None:
         hashed_password = self.hash_data(password)
@@ -161,21 +206,24 @@ class Client:
             "faces": pickle.dumps(faces).hex()
         }
         print('Sending face recognition request...')
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/face_recognition", json=json, headers={"Authorization": f"Bearer {self.token}"})
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/face_recognition",
+                                 json=json, headers={"Authorization": f"Bearer {self.token}"})
 
         data = response.json()
 
         status = data['return']
         if status != 'empty':
-            data = self.decrypt_aes(bytes.fromhex(data["return"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
+            data = self.decrypt_aes(bytes.fromhex(
+                data["return"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
 
             data = pickle.loads(data)
 
         return data if status != 'empty' else []
-    
-    def get_recognition_history(self):        
+
+    def get_recognition_history(self):
         names, datetimes, cam_indexes, levels, images = list(), list(), list(), list(), list()
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_recognition_history", headers={"Authorization": f"Bearer {self.token}"}) # name, datetime, cam_index, level, image
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_recognition_history", headers={
+                                 "Authorization": f"Bearer {self.token}"})  # name, datetime, cam_index, level, image
 
         data = response.json()
 
@@ -185,34 +233,37 @@ class Client:
         eivs = bytes.fromhex(eivs)
         hash2 = self.hash_data(eivs)
         eivs = pickle.loads(eivs)
+        self.check_integrity_by_hash(hash1, hash2, 'initialization vector')
 
         returned_data1 = data['return']
         returned_data2 = bytes.fromhex(returned_data1)
         returned_data4 = pickle.loads(returned_data2)
 
-        print('hash1:', hash1)
-        print('hash2:', hash2)
-
-        print(returned_data4[0], returned_data4[1], returned_data4[2], returned_data4[3], returned_data4[5])
+        print(returned_data4[0], returned_data4[1],
+              returned_data4[2], returned_data4[3], returned_data4[5])
         for (name, cam_index, level) in zip(returned_data4[0], returned_data4[2], returned_data4[3]):
             names.append(name)
             cam_indexes.append(cam_index)
             levels.append(level)
 
         for (image, eiv1) in zip(returned_data4[4], eivs):
-            print(f'image type: {type(image)}; eiv type: {type(eiv1)}; eiv: {eiv1}; len eiv: {len(eiv1)}')
+            print(
+                f'image type: {type(image)}; eiv type: {type(eiv1)}; eiv: {eiv1}; len eiv: {len(eiv1)}')
             image = self.decrypt_aes(image, eiv1)
             print(f'Decrypted bytes length: {len(image)}')
-            print(f'Decrypted data sample: {image[:10]}')  # Debug: Check the length of the decrypted data
+            # Debug: Check the length of the decrypted data
+            print(f'Decrypted data sample: {image[:10]}')
 
             npa = np.frombuffer(image, np.uint8)
-            print(f'npa shape: {npa.shape}')  # Debug: Check the shape of the numpy array
+            # Debug: Check the shape of the numpy array
+            print(f'npa shape: {npa.shape}')
 
             image = cv2.imdecode(npa, cv2.IMREAD_COLOR)
             if image is None:
                 print("Error: cv2.imdecode returned None. Invalid image data.")
             else:
-                print(f'Decoded image shape: {image.shape}')  # Debug: Check the shape of the decoded image
+                # Debug: Check the shape of the decoded image
+                print(f'Decoded image shape: {image.shape}')
                 images.append(image)
 
         for datetime in returned_data4[1]:
@@ -220,10 +271,11 @@ class Client:
             datetimes.append(datetime)
 
         return names, datetimes, cam_indexes, levels, images
-    
+
     def get_faces(self):
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_faces", headers={"Authorization": f"Bearer {self.token}"}) # name, clearance, face image
-        
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_faces", headers={
+                                 "Authorization": f"Bearer {self.token}"})  # name, clearance, face image
+
         response_data = response.json()
 
         data = response_data['return']
@@ -242,7 +294,7 @@ class Client:
             faces[i] = face
 
         return (ids, names, clearances, faces)
-    
+
     def add_face(self, name: str, clearance: str, face: str):
         face_img = cv2.imread(face)
         face_img1 = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
@@ -252,11 +304,38 @@ class Client:
             return {'success': False, 'reason': 'no face'}
         clearance = int(clearance)
 
-        iv, data = self.encrypt_aes(pickle.dumps((name, clearance, encoding_vec, cv2.imencode('.jpg', face_img)[1].tobytes())))
+        iv, data = self.encrypt_aes(pickle.dumps(
+            (name, clearance, encoding_vec, cv2.imencode('.jpg', face_img)[1].tobytes())))
 
         response = requests.post("https://ndioksiatdian.pythonanywhere.com/add_face", json={
             "data": data.hex(),
             "eiv": iv.hex()
+        }, headers={"Authorization": f"Bearer {self.token}"})
+
+        sc = response.status_code
+        responsed = response.json()
+        if sc == 200:
+            return {'success': True}
+        elif sc == 500:
+            print(responsed["reason"])
+            return {'success': False, 'reason': responsed['reason']}
+
+    def edit_face(self, name: str, clearance: int, face: str, index: int):
+        face_img = cv2.imread(face)
+        face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+
+        try:
+            encoding_vec = face_recognition.face_encodings(face_img)[0]
+        except IndexError:
+            return {'success': False, 'reason': 'no face'}
+
+        iv, data = self.encrypt_aes(pickle.dumps(
+            (name, clearance, encoding_vec, cv2.imencode('.jpg', face_img)[1].tobytes())))
+
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/edit_face", json={
+            "data": data.hex(),
+            "eiv": iv.hex(),
+            "index": index
         }, headers={"Authorization": f"Bearer {self.token}"})
 
         sc = response.status_code

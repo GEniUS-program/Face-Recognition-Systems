@@ -93,7 +93,7 @@ def decrypt_aes(data: bytes, iv: bytes, user_id: int) -> bytes:
     return decrypted_data
 
 
-def encrypt_aes_global(data: bytes, iv=None) -> bytes:
+def encrypt_aes_global(data: bytes, iv=None) -> tuple[bytes, bytes]:
     global GLOBAL_ASYMMETRIC_KEY
     if iv is None:
         iv = os.urandom(16)
@@ -114,7 +114,7 @@ def decrypt_aes_global(data: bytes, iv: bytes) -> bytes:
     return decrypted_data
 
 
-def hash_data(data) -> str:
+def hash_data(data: bytes) -> str:
     data_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
     data_hash.update(data)
     return data_hash.finalize().hex()
@@ -158,11 +158,12 @@ def establish_connection():
         iv, encrypted_server_public_key = encrypt_aes(
             PUBLIC_KEY_SERIALIZED.encode(), user_id, iv)
         encrypted_aes_key = encrypt_for_user_rsa(users[user_id][2], user_id)
-        return jsonify({"token": encrypted_token.hex(), "server_public_key": encrypted_server_public_key.hex(), "user_id": user_id, "aes_key": encrypted_aes_key.hex(), "eiv": eiv.hex()}), 200
+        return jsonify({"token": encrypted_token.hex(), "token_hash": hash_data(access_token.encode()), "server_public_key": encrypted_server_public_key.hex(), "server_public_key_hash": hash_data(PUBLIC_KEY_SERIALIZED.encode()), "user_id": user_id, "aes_key": encrypted_aes_key.hex(), "aes_hash": hash_data(users[user_id][2]), "eiv": eiv.hex(), "iv_hash": hash_data(iv)}), 200
 
 
 @app.route('/register_user', methods=['POST'])
 def register_new_user():
+
     global to_confirm, sql_engine  # connection,
     data = request.get_json()
     username = data.get("username")
@@ -374,6 +375,41 @@ def add_face():
         return jsonify({"message": "Face added successfully!"}), 200
     except Exception as e:
         return jsonify({"reason": f"server error, {e}"}), 500
+
+
+@app.route('/edit_face', methods=['POST'])
+@jwt_required(locations=['headers'])
+def edit_face():
+    global sql_engine
+    user_id = int(get_jwt_identity())
+
+    data = request.get_json()
+
+    eiv = data['eiv']
+    eiv = bytes.fromhex(eiv)
+    iv = decrypt_user_rsa(eiv)
+
+    data1 = data['data']
+    data1 = bytes.fromhex(data1)
+    data1 = decrypt_aes(data1, iv, user_id)
+    data1 = pickle.loads(data1)
+
+    index = data['index']
+
+    name, clearance, encoding_vec, image = data1
+    iv1, image = encrypt_aes_global(image)
+    _, encoding_vec = encrypt_aes_global(pickle.dumps(encoding_vec), iv1)
+    _, name = encrypt_aes_global(name.encode('utf-8'), iv1)
+    try:
+        with sql_engine.connect() as connection:
+            connection.execute(
+                "UPDATE faces SET name = %s, access_level = %s, vector = %s, image = %s, eiv = %s WHERE face_id = %s", (
+                    name, clearance, encoding_vec, image, iv1, index
+                ))
+    except Error:
+        return jsonify({"reason": "server error"}), 500
+    else:
+        return jsonify({"reason": "Face edited successfully!"}), 200
 
 
 @app.route('/logout', methods=['POST'])

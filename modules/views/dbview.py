@@ -56,7 +56,7 @@ class DataBaseView(QtWidgets.QWidget):
         self.clearance_field = QtWidgets.QLineEdit()
         self.clearance_field.setPlaceholderText('Ур. доступа')
         self.edit_button = QtWidgets.QPushButton('Редактировать')
-        self.edit_button.clicked.connect(self.edit_action)
+        self.edit_button.clicked.connect(self.edit_gate_action)
         self.clearance_edit_layout.addWidget(self.clearance_field)
         self.clearance_edit_layout.addWidget(self.edit_button)
         self.column_layout.addLayout(self.clearance_edit_layout)
@@ -83,36 +83,39 @@ class DataBaseView(QtWidgets.QWidget):
         self.update_db_table()
 
     def add_gate_action(self):
-        dialog = DialogWindow('Вы уверены, что хотите добавить новую запись в базу данных?')
+        dialog = DialogWindow(
+            'Вы уверены, что хотите добавить новую запись в базу данных?')
         dialog.dialog_signal.connect(lambda x: self.add_action(x))
         dialog.exec()
 
     def add_action(self, answer):
         if answer == 'a':
-            self.client.client.add_face(self.name_field.text(), int(self.clearance_field.text()), self.face_image_field.path_label.text())
-                #self.db_worker.add(self.name_field.text(
-                #), self.clearance_field.text(), cv2.imread(self.face_image_field.path_label.text()))
-            
+            self.client.client.add_face(self.name_field.text(), int(
+                self.clearance_field.text()), self.face_image_field.path_label.text())
             self.update_db_table()
         else:
             logging.info('Adding data cancelled.')
 
-    def edit_action(self):
-        line_index = self.database_info_table.currentRow()
+    def edit_action(self, answer):
+        if answer == 'a':
+            line_index = self.database_info_table.currentRow()
+            idt = int(self.database_info_table.item(line_index, 0).text())
+            logging.info(f"Editing data in line {line_index} of database...")
 
-        logging.info(f"Editing data in line {line_index} of database...")
-
-        try:
-            self.db_worker.edit(self.name_field.text(), self.clearance_field.text(
-            ), self.face_image_field.path_label.text(), line_index)
-        except Exception as e:
-            logging.error(
-                f'An error occured when editing data in database. Error details: {e}')
-            logging.warning('Database worker is not ready to edit data.')
+            self.client.client.edit_face(self.name_field.text(), int(
+                self.clearance_field.text()), self.face_image_field.path_label.text(), idt)
 
         self.update_db_table()
 
+    def edit_gate_action(self):
+        dialog = DialogWindow(
+            'Вы уверены, что хотите изменить выбранную запись в базе данных?')
+        dialog.dialog_signal.connect(lambda x: self.edit_action(x))
+        dialog.exec()
+
     def delete_action(self):
+        # ask for confirmation in a dialog window
+
         logging.info("Deleting data from database...")
         try:
             self.db_worker.delete(self.name_field.text(
