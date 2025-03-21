@@ -16,24 +16,21 @@ import gc
 class CameraWorker(QObject):
     frameCaptured = pyqtSignal(object)
 
-    def __init__(self, parent=None, camera_index=0):
-        super(CameraWorker, self).__init__(parent=parent)
+    def __init__(self, parent1=None, camera_index=0):
+        super().__init__()
         print('initializing CameraWorker class')
         self.camera_index = camera_index
         self.object_trackers = []
-        self.parent = parent
+        self.parent1 = parent1
         self.running = False
         self.frame_counter = 6
-        self.pool = Pool(processes=5)
-        self.manager = Manager()
-        self.lock = self.manager.Lock()
         self.mtcnn = MTCNN(keep_all=True, device='cuda' if torch.cuda.is_available() else 'cpu')
         self.bboxes = []
         self.names = []
         self.frame_count = 0
-        self.face_detection_interval = 20  # Detect faces every 15 frames
-        self.face_tracking_interval = 10  # Track faces every 5 frames
-        self.movement_threshold = 50  # Define a threshold for sudden movement
+        self.face_detection_interval = 20  # Detect faces every 20 frames
+        self.face_tracking_interval = 10  # Track faces every 10 frames
+        self.movement_threshold = 150  # Define a threshold for sudden movement
         # Initialize your camera settings
         self.cam, self.cam_cl = 0, 0
         with open('./source/data/cameras.txt', 'r', encoding='utf-8') as f:
@@ -44,10 +41,10 @@ class CameraWorker(QObject):
                     self.cam_cl = line.split(';')[2]
 
     def create_trackers(self, frame, faces): # this is where we send the frame to face_recognition to assign the correct names to the faces
-        data = self.parent.client.face_recognition(frame.imencode().tobytes(), self.cam_cl, self.cam, self.camera_index, faces)
+        data = self.parent1.client.face_recognition(cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))[1].tobytes(), self.cam_cl, self.cam, self.camera_index, faces)
         frame_new, locations, names, clearances = data[0], data[1], data[2], data[3]
-        for i, (location, name, clearance_status) in enumerate(zip(faces, names, clearances)):
-            if any(name in i for i in self.object_trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
+        for i, (location, name, clearance_status) in enumerate(zip(locations, names, clearances)):
+            if name != 'Unknown' and any(name in i for i in self.object_trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
                 #delete the tracker and replace it with a new one
                 top, right, bottom, left = location  # Unpack the coordinates
                 tracker = cv2.TrackerCSRT_create()
@@ -66,7 +63,6 @@ class CameraWorker(QObject):
             self.object_trackers.append([tracker, name, (left, top), clearance_status])  # Store the initial position
 
     def check_trackers(self, frame, bboxes=[], names=[]):
-        global trackers
         bboxes = bboxes
         names = names
         if self.frame_count % self.face_detection_interval == 0:
@@ -85,13 +81,18 @@ class CameraWorker(QObject):
                     left = int(x1)
                     set_faces.append((top, right, bottom, left))
 
-            if len(set_faces) >= len(trackers):
+            if len(set_faces) > len(self.object_trackers):
                 self.create_trackers(frame, set_faces)
 
         if self.frame_count % self.face_tracking_interval == 0:
             bboxes = []
             # Update existing trackers
-            for i, (tracker, name, last_position) in enumerate(trackers):
+            if self.object_trackers == []: return frame, [], [] 
+            for i in range(len(self.object_trackers)):
+                try:
+                    tracker, name, last_position = self.object_trackers[i][:3]
+                except:
+                    continue
                 success, bbox = tracker.update(frame)
                 if success:
                     bboxes.append(bbox)
@@ -104,15 +105,15 @@ class CameraWorker(QObject):
 
                     # Check if the movement exceeds the threshold
                     if distance_moved > self.movement_threshold:
-                        del trackers[i]  # Remove the tracker
+                        del self.object_trackers[i]  # Remove the tracker
                     else:
                         # Update the last known position
-                        trackers[i][2] = current_position  # Update last_position
+                        self.object_trackers[i][2] = current_position  # Update last_position
 
                         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                         cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
                 else:
-                    del trackers[i]
+                    del self.object_trackers[i]
         else:
             for (box, name) in zip(bboxes, names):
                 x, y, w, h = [int(v) for v in box]
@@ -121,17 +122,6 @@ class CameraWorker(QObject):
 
 
         return frame, bboxes, names
-
-    def draw_face_rectangle(self, frame, location, name, clearance):
-        color = (0, 255, 0) if clearance else (0, 0, 255)
-        cv2.rectangle(frame, (location[3], location[0]),
-                      (location[1], location[2]), color, 2)
-        frame = Image.fromarray(frame)
-        draw_frame = ImageDraw.Draw(frame)
-        draw_frame.text((location[3], location[0] - 10), f'{self.camera_codename}\n{name}',
-                        (255, 255, 255), font=ImageFont.truetype('arial.ttf', 25))
-        return np.array(frame)
-
 
     def run(self):
         self.running = True
@@ -145,30 +135,20 @@ class CameraWorker(QObject):
             else:
                 logging.info(f"Got frame on camera with index: {self.camera_index}")
 
-            if i == self.frame_counter:
-                logging.info("Attempting to call compare_faces...")
-                try:
-                    frame, self.bboxes, self.names = self.check_trackers(frame, self.bboxes, self.names)
-                except Exception as e:
-                    logging.error(f'Error in compare_faces: {e}')
-                self.frameCaptured.emit(frame)
+            frame, self.bboxes, self.names = self.check_trackers(frame, self.bboxes, self.names)
+            self.frameCaptured.emit(frame)
 
-                i = 1
-            else:
-                i += 1
-    
-            #time.sleep(0.033)  # Limit to ~30 FPS
+            time.sleep(0.033)  # Limit to ~30 FPS
     
         self.cap.release()  # Release the camera when done
 
 
 class VideoFeed(QWidget):
     def __init__(self, parent, camera_index=0):
-        super().__init__(parent)
+        super().__init__()
         print('initializing VideoFeed class')
         self.thread = QThread()
-        self.parent = parent
-        self.cameraWorker = CameraWorker(parent=parent, camera_index=camera_index)
+        self.cameraWorker = CameraWorker(parent1=parent, camera_index=camera_index)
         self.cameraWorker.moveToThread(self.thread)
         self.cameraWorker.frameCaptured.connect(self.processFrame)
         self.thread.started.connect(self.cameraWorker.run)

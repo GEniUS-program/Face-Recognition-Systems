@@ -18,9 +18,6 @@ class LoginWindow(QtWidgets.QDialog):
         self.register_signal_com = Communicate()
         self.register_signal = self.register_signal_com.signal
 
-        self.abort_signal_com = Communicate()
-        self.abort_signal = self.abort_signal_com.signal
-        
         self.login_view = self.create_login_view()
         self.stacked_widget.addWidget(self.login_view)
 
@@ -132,6 +129,3 @@ class LoginWindow(QtWidgets.QDialog):
     def show_login_view(self):
         self.stacked_widget.setCurrentWidget(self.login_view)
 
-    def closeEvent(self, a0):
-        self.abort_signal.emit(a0)
-        return super().closeEvent(a0)

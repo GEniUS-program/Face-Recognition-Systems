@@ -1,3 +1,5 @@
+import face_recognition
+import numpy as np
 import requests
 import pickle
 import cv2
@@ -7,6 +9,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 
 
 class Client:
@@ -18,8 +21,6 @@ class Client:
         self.enc_key = None
         self.decr_key = None
         self.large_data_key = None
-        self.padder = padding.PKCS7(algorithms.AES.block_size).padder()
-        self.unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
         self.acc_id = None
 
         self.reg_com = Communicate()
@@ -28,38 +29,43 @@ class Client:
     def decrypt_rsa(self, data: bytes) -> bytes:
         return self.decr_key.decrypt(
             data,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            rsa_padding.OAEP(
+                mgf=rsa_padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
                 label=None
             )
-        ).decode()
+        )
 
     def encrypt_rsa(self, data: bytes) -> bytes:
         return self.enc_key.encrypt(
             data,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            rsa_padding.OAEP(
+                mgf=rsa_padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
                 label=None
             )
         )
 
     def decrypt_aes(self, data: bytes, iv: bytes) -> bytes:
+        
+        unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+
         cipher = Cipher(algorithms.AES(self.large_data_key), modes.CFB(iv))
         decryptor = cipher.decryptor()
         decrypted_data = decryptor.update(data) + decryptor.finalize()
 
-        decrypted_data = self.unpadder.update(
-            decrypted_data) + self.unpadder.finalize()
+        decrypted_data = unpadder.update(
+            decrypted_data) + unpadder.finalize()
 
         return decrypted_data
 
     def encrypt_aes(self, data: bytes) -> tuple[bytes, bytes]:
-        iv = os.urandom(16)
+        padder = padding.PKCS7(algorithms.AES.block_size).padder()
 
-        padded_data = self.padder.update(
-            data) + self.padder.finalize()
+        iv = os.urandom(16)
+        
+        padded_data = padder.update(
+            data) + padder.finalize()
 
         cipher = Cipher(algorithms.AES(self.large_data_key),
                         modes.CFB(iv), backend=default_backend())
@@ -105,22 +111,27 @@ class Client:
             print('error code', response.status_code)
             print(response.json()["error"])
             return {"success": False, "reason": response.json()["error"]}
+        
         res_data = response.json()
-        encrypted_server_key = bytes.fromhex(res_data["server_public_key"])
-        decrypted_server_key = self.decrypt_rsa(encrypted_server_key)
-        self.enc_key = serialization.load_pem_private_key(
+
+        iv = self.decrypt_rsa(bytes.fromhex(res_data["eiv"]))
+        
+        self.large_data_key = bytes.fromhex(res_data["aes_key"])
+        self.large_data_key = self.decrypt_rsa(self.large_data_key)
+
+        decrypted_server_key = self.decrypt_aes(bytes.fromhex(res_data["server_public_key"]), iv)
+
+        self.enc_key = serialization.load_pem_public_key(
             decrypted_server_key,
             backend=default_backend()
         )
-
+                
         # acquire token
         self.token = bytes.fromhex(res_data["token"])
-        self.token = self.decrypt_rsa(self.token).decode()
+        self.token = self.decrypt_aes(self.token, iv).decode()
 
         self.acc_id = res_data["user_id"]
 
-        self.large_data_key = bytes.fromhex(res_data["aes_key"])
-        self.large_data_key = self.decrypt_rsa(self.large_data_key)
         return {"success": True}
 
     def register_user(self, username: str, password: str, email: str) -> None:
@@ -146,120 +157,7 @@ class Client:
             self.successful_reg_signal.emit(
                 {"success": False, "reason": "request_error"})
 
-    def send_request(self, url, data: bytes, encrypted='rsa', target='read'):
-        eiv = None
-        if data is not None:
-            if encrypted == 'rsa':
-                data = self.encrypt_rsa(data)
-            elif encrypted == 'aes':
-                eiv, data = self.encrypt_aes(data)
-
-        response = requests.post(url, json={
-            "encrypted": encrypted,
-            "target": target,
-            "data": data,
-            "token": self.token,
-            "eiv": eiv
-        }, headers={"Authorization": f"Bearer {self.token}"})
-
-        response_data = response.json()
-
-        if response.status_code == 200:
-            if encrypted == 'rsa':
-                return self.decrypt_rsa(response_data["data"])
-            elif encrypted == 'aes':
-                return self.decrypt_aes(response_data["data"], self.decrypt_rsa(response_data[eiv]))
-        else:
-            return
-
-    def send_faces_request(self, data=None, old_data=None, encrypted='rsa', target='read'):
-        """
-        Send request for the faces table in the db.\n
-        For delete, use old_data.\n
-        For edit use data, old_data.\n
-        For add use data.
-        Args:
-            data (bytes): data to send to server
-            encrypted (str): choose an encyption algorithm. Can be: "rsa", "aes" or "not" for no encryption
-            target (str): tells the server what to do with the db. Can be: "add", "read", "edit", "del".
-        """
-
-        index = 'https://ndioksiatdian.pythonanywhere.com/faces/'
-
-        if target == "add":
-            eiv = None
-            if encrypted == 'rsa':
-                data = self.encrypt_rsa(data)
-            elif encrypted == 'aes':
-                eiv, data = self.encrypt_aes(data)
-
-            response = requests.post(index, json={
-                "encrypted": encrypted,
-                "target": "add",
-                "data": data.hex(),
-                "eiv": eiv.hex()
-            }, headers={"Authorization": f"Bearer {self.token}"})
-
-            if response.status_code == 200:
-                return {"success": True, "reason": "added"}
-            else:
-                return {"success": False, "reason": "unknown"}
-            
-        elif target == "read":
-            response = requests.post(index, json={
-                "target": "read"
-            }, headers={"Authorization": f"Bearer {self.token}"})
-
-            if response.status_code == 200:
-                return {"success": True, "reason": "read_data", "data": response.json()} # acc_id, face_id, name, access_level, vector, image
-            else:
-                return {"success": False, "reason": "unknown"}
-            
-        elif target == "edit":
-            eiv_old, eiv_new = None, None
-            if encrypted == "rsa":
-                data = self.encrypt_rsa(data)
-                old_data = self.encrypt_rsa(old_data)
-            elif encrypted == 'aes':
-                eiv_new, data = self.encrypt_aes(data)
-                eiv_old, old_data = self.encrypt_aes(old_data)
-
-            response = requests.post(index, json={
-                "encrypted": encrypted,
-                "target": "edit",
-                "new_data": data.hex(),
-                "old_data": old_data.hex(),
-                "new_eiv": eiv_new.hex(),
-                "old_eiv": eiv_old.hex()
-            }, headers={"Authorization": f"Bearer {self.token}"})
-
-            if response.status_code == 200:
-                return {"success": True, "reason": "edited"}
-            else:
-                return {"success": False, "reason": "unknown"}
-        elif target == "del":
-            eiv = None
-            if encrypted == 'rsa':
-                data = self.encrypt_rsa(old_data)
-            elif encrypted == 'aes':
-                eiv, data = self.encrypt_aes(old_data)
-
-            response = requests.post(index, json={
-                "encrypted": encrypted,
-                "target": "del",
-                "data": data.hex(),
-                "eiv": eiv.hex()
-            }, headers={"Authorization": f"Bearer {self.token}"})
-
-            if response.status_code == 200:
-                return {"success": True, "reason": "deleted"}
-            else:
-                return {"success": False, "reason": "unknown"}
-            
-        else:
-            return {"success": False, "reason":"invalid target"}
-        
-    def face_recognition(self, frame: bytes, camera_clearance: int, camera_name: str, camera_index: int, faces: list):
+    def face_recognition(self, frame, camera_clearance: int, camera_name: str, camera_index: int, faces: list):
         eiv, encrypted_frame = self.encrypt_aes(frame)
         json = {
             "frame": encrypted_frame.hex(),
@@ -274,8 +172,83 @@ class Client:
 
         data = response.json()
 
-        data = self.decrypt_aes(bytes.fromhex(data["return"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
+        status = data['return']
+        if status != 'empty':
+            data = self.decrypt_aes(bytes.fromhex(data["return"]), self.decrypt_rsa(bytes.fromhex(data["eiv"])))
 
-        data = pickle.loads(data)
+            data = pickle.loads(data)
 
-        return data
+        return data if status != 'empty' else []
+    
+    def get_recognition_history(self):        
+        names, datetimes, cam_indexes, levels, images = list(), list(), list(), list(), list()
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_recognition_history", headers={"Authorization": f"Bearer {self.token}"}) # name, datetime, cam_index, level, image
+
+        data = response.json()
+
+        returned_data1 = data['return']
+        returned_data2 = bytes.fromhex(returned_data1)
+        returned_data4 = pickle.loads(returned_data2)
+        print(returned_data4[0], returned_data4[1], returned_data4[2], returned_data4[3], returned_data4[5])
+        for (name, cam_index, level) in zip(returned_data4[0], returned_data4[2], returned_data4[3]):
+            names.append(name)
+            cam_indexes.append(cam_index)
+            levels.append(level)
+
+        for (image, eiv1) in zip(returned_data4[4], returned_data4[5]):
+            image = self.decrypt_aes(image, eiv1)
+            npa = np.frombuffer(image, np.uint8)
+            image = cv2.imdecode(npa, cv2.IMREAD_COLOR)
+            images.append(image)
+
+        for datetime in returned_data4[1]:
+            datetime = datetime.strftime('%Y-%m-%d %H:%M:%S')
+            datetimes.append(datetime)
+
+        return names, datetimes, cam_indexes, levels, images
+    
+    def get_faces(self):
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_faces", headers={"Authorization": f"Bearer {self.token}"}) # name, clearance, face image
+        
+        response_data = response.json()
+
+        data = response_data['return']
+        data1 = bytes.fromhex(data)
+        data2 = pickle.loads(data1)
+
+        ids = data2[0]
+        names = data2[1]
+        clearances = data2[2]
+        faces = data2[3]
+        ivs = data2[4]
+        for i, face in enumerate(faces):
+            face = self.decrypt_aes(face, ivs[i])
+            npa = np.frombuffer(face, np.uint8)
+            face = cv2.imdecode(npa, cv2.IMREAD_COLOR)
+            faces[i] = face
+
+        return ids, names, clearances, faces
+    
+    def add_face(self, name: str, clearance: str, face: str):
+        face_img = cv2.imread(face)
+        face_img1 = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+        try:
+            encoding_vec = face_recognition.face_encodings(face_img1)[0]
+        except IndexError:
+            return {'success': False, 'reason': 'no face'}
+        clearance = int(clearance)
+
+        iv, data = self.encrypt_aes(pickle.dumps((name, clearance, encoding_vec, cv2.imencode('.jpg', face_img)[1].tobytes())))
+
+        response = requests.post("https://ndioksiatdian.pythonanywhere.com/add_face", json={
+            "data": data.hex(),
+            "eiv": iv.hex()
+        }, headers={"Authorization": f"Bearer {self.token}"})
+
+        sc = response.status_code
+        responsed = response.json()
+        if sc == 200:
+            return {'success': True}
+        elif sc == 500:
+            print(responsed["reason"])
+            return {'success': False, 'reason': responsed['reason']}

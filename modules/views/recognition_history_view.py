@@ -1,12 +1,12 @@
 from PyQt6 import QtWidgets
-from modules.utils.recognition_history import RecognitinonHistoryWorker
 from modules.utils.image_utils.frame_display import WindowDisplay
 import cv2
 
 
 class RecognitionHistoryView(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, client):
         super(RecognitionHistoryView, self).__init__()
+        self.client = client
         self.initUI()
 
     def initUI(self):
@@ -33,14 +33,13 @@ class RecognitionHistoryView(QtWidgets.QWidget):
         self.update()
 
     def on_row_selected(self, index):
-        frame = cv2.imread(self.recognition_history_table.item(index.row(), 4).text())
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        im = self.recognition_history_table.item(index.row(), 4).text()
+        frame = self.images_data[im]
         display_frame = WindowDisplay(frame)
         display_frame.exec()
 
     def update(self):
-        text = self.search_bar.text()
-        data = self.get_data(text)
+        data = self.get_data()
         self.update_recognition_table(data)
 
     def update_recognition_table(self, data):
@@ -48,50 +47,15 @@ class RecognitionHistoryView(QtWidgets.QWidget):
         self.recognition_history_table.setColumnCount(5)
         self.recognition_history_table.setHorizontalHeaderLabels(
             ["ФИО", 'Дата', 'Камера', 'Совпадение уровня доступа', 'Изображение'])
-        for line in data:
-            self.recognition_history_table.insertRow(0)
-            j = 0
-            for i in [0, 1, 4, 3, 2]:
-                self.recognition_history_table.setItem(
-                    0, j, QtWidgets.QTableWidgetItem(line[i]))
-                j += 1
+        for (name, datetime, cam_indexe, level, image) in zip(data[0], data[1], data[2], data[3], self.images_data.keys()):
+            self.recognition_history_table.insertRow(0)  # Insert a new row at the top
+            self.recognition_history_table.setItem(0, 0, QtWidgets.QTableWidgetItem(name))          # ФИО
+            self.recognition_history_table.setItem(0, 1, QtWidgets.QTableWidgetItem(datetime))      # Дата
+            self.recognition_history_table.setItem(0, 2, QtWidgets.QTableWidgetItem(str(cam_indexe)))  # Камера
+            self.recognition_history_table.setItem(0, 3, QtWidgets.QTableWidgetItem(str(level)))     # Совпадение уровня доступа
+            self.recognition_history_table.setItem(0, 4, QtWidgets.QTableWidgetItem(image))  
 
-    def get_data(self, parameters=None):
-        worker = RecognitinonHistoryWorker()
-        if parameters is not None:
-            if '$' in parameters:
-                parameters = parameters.strip('$')
-                param_pairs = parameters.split(';')
-
-                name = None
-                is_suf_clearance = None
-                camera_index = None
-                date = None
-                is_img = None
-
-                for pair in param_pairs:
-                    if ':' in pair:
-                        key, value = pair.split(':', 1)
-                        key = key
-                        value = value
-
-                        if key == 'name':
-                            name = value
-                        elif key == 'clear':
-                            is_suf_clearance = value
-                        elif key == 'index':
-                            camera_index = value
-                        elif key == 'date':
-                            date = value
-                        elif key == 'img':
-                            print('GOT VALUE FOR IMAGE')
-                            is_img = value
-
-                data = worker.get(name=name, is_suf_clearance=is_suf_clearance,
-                                  camera_index=camera_index, date=date, is_img=is_img)
-            else:
-                data = worker.search(parameters)
-        else:
-            data = worker.get()
-
+    def get_data(self):
+        data = self.client.client.get_recognition_history() # name, datetime, cam_index, level, image
+        self.images_data = {f'Нажмите два раза, чтобы просмотреть{i}':image for i, image in enumerate(data[4])}
         return data

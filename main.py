@@ -62,9 +62,9 @@ class MainUI(QtWidgets.QMainWindow):
         self.main_stacked_widget = QtWidgets.QStackedWidget()
 
         # self.main_view = MainView()
-        self.database_view = DataBaseView()
+        self.database_view = DataBaseView(self)
         self.camera_view = CamFeedView(self, len(self.cameras), self.cameras)
-        self.recog_history_view = RecognitionHistoryView()
+        self.recog_history_view = RecognitionHistoryView(self)
 
         # self.main_stacked_widget.addWidget(self.main_view)
         self.main_stacked_widget.addWidget(self.database_view)
@@ -101,8 +101,6 @@ class MainUI(QtWidgets.QMainWindow):
 
         self.login_widget.login_signal.connect(
             lambda x: self.process_login_info(x))
-        self.login_widget.abort_signal.connect(
-            lambda x: self.closeEvent(x))
         self.login_widget.register_signal.connect(
             lambda x: self.register_user(x))
 
@@ -113,8 +111,10 @@ class MainUI(QtWidgets.QMainWindow):
     def process_login_info(self, login_info):
         result = self.client.establish_connection(login_info[0], login_info[1])
         if result["success"]:
-            self.read_config()
             self.login_widget.close()
+            del self.login_widget
+            self.read_config()
+            
         else:
             QtWidgets.QMessageBox.warning(
                 self, "Ошибка", f"Произошла ошибка: {result['reason']}")
@@ -160,6 +160,10 @@ class MainUI(QtWidgets.QMainWindow):
                 case "request_error":
                     self.login_widget.error_text.setText(
                         "Произошла непредвиденная ошибка при подключении к серверу")
+                    self.login_widget.error_text.show()
+                case _:
+                    self.login_widget.error_text.setText(
+                        signal["reason"])
                     self.login_widget.error_text.show()
 
     
