@@ -1,11 +1,9 @@
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QWidget, QVBoxLayout, QSizePolicy
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
-from multiprocessing import Pool, Manager, Lock
-from PIL import Image, ImageDraw, ImageFont
 from PyQt6.QtGui import QImage, QPixmap
 from facenet_pytorch import MTCNN
-import face_recognition
 import numpy as np
+import playsound
 import logging
 import torch
 import time
@@ -24,6 +22,12 @@ class CameraWorker(QObject):
         self.parent1 = parent1
         self.running = False
         self.frame_counter = 6
+        self.sound_limiter = 15
+        self.sound_ticks = 0
+        self.max_sounds = 15
+        self.sound_counter = 0
+        self.reset_sound_frames = 250
+        self.sound_frame_counter = 0
         self.mtcnn = MTCNN(keep_all=True, device='cuda' if torch.cuda.is_available() else 'cpu')
         self.bboxes = []
         self.names = []
@@ -56,12 +60,12 @@ class CameraWorker(QObject):
                         break
                 self.object_trackers[ind] = [tracker, name, (left, top), clearance_status]
                 continue
-
+            
             top, right, bottom, left = location  # Unpack the coordinates
             tracker = cv2.TrackerCSRT_create()
             tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
             self.object_trackers.append([tracker, name, (left, top), clearance_status])  # Store the initial position
-
+        
     def check_trackers(self, frame, bboxes=[], names=[]):
         bboxes = bboxes
         names = names
@@ -120,6 +124,23 @@ class CameraWorker(QObject):
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.putText(frame, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
+        if any('Unknown' in i for i in self.object_trackers):
+            if self.sound_ticks == self.sound_limiter:
+                self.sound_ticks = 0
+                if self.sound_counter != self.sound_limiter:
+                    self.sound_counter += 1
+                    playsound.playsound('./source/sounds/alert_sound.mp3', block=True)
+                else:
+                    if self.sound_frame_counter == self.reset_sound_frames:
+                        self.sound_counter = 0
+                    else:
+                        self.sound_frame_counter += self.face_tracking_interval
+                
+            else:
+                self.sound_ticks += 1
+                
+        else:
+            self.sound_counter = 0
 
         return frame, bboxes, names
 
