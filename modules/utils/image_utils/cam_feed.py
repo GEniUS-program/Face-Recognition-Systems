@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QWidget, QVBoxLayout, QSizePolicy
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QWidget, QVBoxLayout, QSizePolicy, QMessageBox
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QImage, QPixmap
 from facenet_pytorch import MTCNN
@@ -129,7 +129,10 @@ class CameraWorker(QObject):
                 self.sound_ticks = 0
                 if self.sound_counter != self.sound_limiter:
                     self.sound_counter += 1
-                    playsound.playsound('./source/sounds/alert_sound.mp3', block=True)
+                    try:
+                        playsound.playsound('./source/sounds/alert_sound.mp3', block=True)
+                    except Exception as e:
+                        QMessageBox.critical(None, "Error", f"Error playing sound: {str(e)}")
                 else:
                     if self.sound_frame_counter == self.reset_sound_frames:
                         self.sound_counter = 0

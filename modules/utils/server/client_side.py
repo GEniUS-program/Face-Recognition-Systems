@@ -48,37 +48,30 @@ class Client:
 
     def decrypt_aes(self, data: bytes, iv: bytes) -> bytes:
         
-        unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-
         cipher = Cipher(algorithms.AES(self.large_data_key), modes.CFB(iv))
         decryptor = cipher.decryptor()
         decrypted_data = decryptor.update(data) + decryptor.finalize()
 
-        decrypted_data = unpadder.update(
-            decrypted_data) + unpadder.finalize()
 
         return decrypted_data
 
-    def encrypt_aes(self, data: bytes) -> tuple[bytes, bytes]:
-        padder = padding.PKCS7(algorithms.AES.block_size).padder()
-
-        iv = os.urandom(16)
+    def encrypt_aes(self, data: bytes, iv: None|bytes=None) -> tuple[bytes, bytes]:
+        if iv is None:
+            iv = os.urandom(16)
         
-        padded_data = padder.update(
-            data) + padder.finalize()
 
         cipher = Cipher(algorithms.AES(self.large_data_key),
                         modes.CFB(iv), backend=default_backend())
         encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+        ciphertext = encryptor.update(data) + encryptor.finalize()
 
         enc_iv = self.encrypt_rsa(iv)
 
         return [enc_iv, ciphertext]
 
-    def hash_data(self, data) -> str:
+    def hash_data(self, data: bytes) -> str:
         data_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
-        data_hash.update(data.encode())
+        data_hash.update(data)
         return data_hash.finalize().hex()
 
     def establish_connection(self, username: str, password: str) -> None:
@@ -98,8 +91,8 @@ class Client:
 
         self.username = username
         self.password = password
-        hashed_password = self.hash_data(password)
-        hashed_username = self.hash_data(username)
+        hashed_password = self.hash_data(password.encode())
+        hashed_username = self.hash_data(username.encode())
 
         response = requests.post("https://ndioksiatdian.pythonanywhere.com/login", json={
             "client_public_key": self.other_enc_key.hex(),
@@ -186,20 +179,41 @@ class Client:
 
         data = response.json()
 
+        hash1 = data['hashf']
+
+        eivs = data['eivs']
+        eivs = bytes.fromhex(eivs)
+        hash2 = self.hash_data(eivs)
+        eivs = pickle.loads(eivs)
+
         returned_data1 = data['return']
         returned_data2 = bytes.fromhex(returned_data1)
         returned_data4 = pickle.loads(returned_data2)
+
+        print('hash1:', hash1)
+        print('hash2:', hash2)
+
         print(returned_data4[0], returned_data4[1], returned_data4[2], returned_data4[3], returned_data4[5])
         for (name, cam_index, level) in zip(returned_data4[0], returned_data4[2], returned_data4[3]):
             names.append(name)
             cam_indexes.append(cam_index)
             levels.append(level)
 
-        for (image, eiv1) in zip(returned_data4[4], returned_data4[5]):
+        for (image, eiv1) in zip(returned_data4[4], eivs):
+            print(f'image type: {type(image)}; eiv type: {type(eiv1)}; eiv: {eiv1}; len eiv: {len(eiv1)}')
             image = self.decrypt_aes(image, eiv1)
+            print(f'Decrypted bytes length: {len(image)}')
+            print(f'Decrypted data sample: {image[:10]}')  # Debug: Check the length of the decrypted data
+
             npa = np.frombuffer(image, np.uint8)
+            print(f'npa shape: {npa.shape}')  # Debug: Check the shape of the numpy array
+
             image = cv2.imdecode(npa, cv2.IMREAD_COLOR)
-            images.append(image)
+            if image is None:
+                print("Error: cv2.imdecode returned None. Invalid image data.")
+            else:
+                print(f'Decoded image shape: {image.shape}')  # Debug: Check the shape of the decoded image
+                images.append(image)
 
         for datetime in returned_data4[1]:
             datetime = datetime.strftime('%Y-%m-%d %H:%M:%S')
@@ -227,7 +241,7 @@ class Client:
             face = cv2.imdecode(npa, cv2.IMREAD_COLOR)
             faces[i] = face
 
-        return ids, names, clearances, faces
+        return (ids, names, clearances, faces)
     
     def add_face(self, name: str, clearance: str, face: str):
         face_img = cv2.imread(face)

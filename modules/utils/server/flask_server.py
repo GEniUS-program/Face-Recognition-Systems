@@ -75,14 +75,10 @@ def encrypt_aes(data: bytes, user_id: int, iv=None) -> tuple[bytes, bytes]:
     if iv is None:
         iv = os.urandom(16)  # AES block size is 16 bytes
 
-    padder = padding.PKCS7(algorithms.AES.block_size).padder()
-
-    padded_data = padder.update(data) + padder.finalize()
-
     cipher = Cipher(algorithms.AES(users[user_id][2]), modes.CFB(
         iv), backend=default_backend())
     encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    ciphertext = encryptor.update(data) + encryptor.finalize()
 
     return [iv, ciphertext]
 
@@ -90,13 +86,9 @@ def encrypt_aes(data: bytes, user_id: int, iv=None) -> tuple[bytes, bytes]:
 def decrypt_aes(data: bytes, iv: bytes, user_id: int) -> bytes:
     global users
 
-    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-
     cipher = Cipher(algorithms.AES(users[user_id][2]), modes.CFB(iv))
     decryptor = cipher.decryptor()
     decrypted_data = decryptor.update(data) + decryptor.finalize()
-
-    decrypted_data = unpadder.update(decrypted_data) + unpadder.finalize()
 
     return decrypted_data
 
@@ -105,34 +97,26 @@ def encrypt_aes_global(data: bytes, iv=None) -> bytes:
     global GLOBAL_ASYMMETRIC_KEY
     if iv is None:
         iv = os.urandom(16)
-    padder = padding.PKCS7(algorithms.AES.block_size).padder()
-
-    padded_data = padder.update(data) + padder.finalize()
-
     cipher = Cipher(algorithms.AES(GLOBAL_ASYMMETRIC_KEY), modes.CFB(
         iv), backend=default_backend())
     encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    ciphertext = encryptor.update(data) + encryptor.finalize()
 
     return iv, ciphertext
 
 
 def decrypt_aes_global(data: bytes, iv: bytes) -> bytes:
     global GLOBAL_ASYMMETRIC_KEY
-    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
-
     cipher = Cipher(algorithms.AES(GLOBAL_ASYMMETRIC_KEY), modes.CFB(iv))
     decryptor = cipher.decryptor()
     decrypted_data = decryptor.update(data) + decryptor.finalize()
-
-    decrypted_data = unpadder.update(decrypted_data) + unpadder.finalize()
 
     return decrypted_data
 
 
 def hash_data(data) -> str:
     data_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
-    data_hash.update(data.encode())
+    data_hash.update(data)
     return data_hash.finalize().hex()
 
 
@@ -325,16 +309,17 @@ def get_recognition_history():
         levels.append(row[3])
         image = decrypt_aes_global(row[4], row[5])
         iv = os.urandom(16)
-        image = encrypt_aes(image, user_id, iv)
+        _, image = encrypt_aes(image, user_id, iv)
         eivs.append(iv)
-        images.append(row[4])
+        images.append(image)
 
     data_to_send = [names, datetimes, cam_indexes, levels, images, eivs]
     data_to_send1 = pickle.dumps(data_to_send)
     # iv, data_to_send2 = encrypt_aes(data_to_send1, user_id)
     # eiv = encrypt_for_user_rsa(iv, user_id)
 
-    return jsonify({"return": data_to_send1.hex()}), 200  # , "eiv": eiv.hex()}
+    hash1 = hash_data(pickle.dumps(eivs))
+    return jsonify({"return": data_to_send1.hex(), "eivs": (pickle.dumps(eivs)).hex(), 'hashf': hash1}), 200
 
 
 @app.route('/get_faces', methods=['POST'])

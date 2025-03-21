@@ -162,5 +162,6 @@ class DataBaseView(QtWidgets.QWidget):
         image_id = int(self.database_info_table.item(
             index.row(), 0).text())
         image = self.faces_list[image_id]
+        print(type(image))
         display_frame = WindowDisplay(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         display_frame.exec()

@@ -35,6 +35,7 @@ class RecognitionHistoryView(QtWidgets.QWidget):
     def on_row_selected(self, index):
         im = self.recognition_history_table.item(index.row(), 4).text()
         frame = self.images_data[im]
+        print(type(frame))
         display_frame = WindowDisplay(frame)
         display_frame.exec()
 
@@ -58,4 +59,8 @@ class RecognitionHistoryView(QtWidgets.QWidget):
     def get_data(self):
         data = self.client.client.get_recognition_history() # name, datetime, cam_index, level, image
         self.images_data = {f'Нажмите два раза, чтобы просмотреть{i}':image for i, image in enumerate(data[4])}
+        try:
+            print(type(data[4]), type(data[4][0]))
+        except:
+            pass
         return data

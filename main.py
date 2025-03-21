@@ -106,15 +106,13 @@ class MainUI(QtWidgets.QMainWindow):
 
         self.login_widget.exec()
 
-            
-
     def process_login_info(self, login_info):
         result = self.client.establish_connection(login_info[0], login_info[1])
         if result["success"]:
             self.login_widget.close()
             del self.login_widget
             self.read_config()
-            
+
         else:
             QtWidgets.QMessageBox.warning(
                 self, "Ошибка", f"Произошла ошибка: {result['reason']}")
@@ -138,8 +136,9 @@ class MainUI(QtWidgets.QMainWindow):
 
     def register_user(self, login_info):
         self.client.register_user(login_info[0], login_info[1], login_info[2])
-        self.client.successful_reg_signal.connect(lambda x: self.process_reg(x))
-                
+        self.client.successful_reg_signal.connect(
+            lambda x: self.process_reg(x))
+
     def process_reg(self, signal):
         if signal["success"]:
             del self.login_widget
@@ -166,9 +165,7 @@ class MainUI(QtWidgets.QMainWindow):
                         signal["reason"])
                     self.login_widget.error_text.show()
 
-    
-        
-        
+
 if __name__ == "__main__":
     freeze_support()
     app = QtWidgets.QApplication(sys.argv)
