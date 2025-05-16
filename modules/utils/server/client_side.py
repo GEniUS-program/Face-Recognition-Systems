@@ -68,6 +68,8 @@ class Client:
         return [enc_iv, ciphertext]
 
     def hash_data(self, data: bytes) -> str:
+        if not isinstance(data, bytes):
+            data = data.encode()
         data_hash = hashes.Hash(hashes.SHA256(), backend=default_backend())
         data_hash.update(data)
         return data_hash.finalize().hex()

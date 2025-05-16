@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from PyQt6 import QtWidgets
 from modules.utils.image_utils.image_path import ImagePathWidget
-from modules.utils.database_worker import DataBaseWorker
 from modules.utils.simple_dialog import DialogWindow
 from modules.utils.communicator import Communicate
 from modules.utils.image_utils.frame_display import WindowDisplay
@@ -12,7 +11,7 @@ import logging
 class DataBaseView(QtWidgets.QWidget):
     def __init__(self, client):
         super(DataBaseView, self).__init__()
-        self.db_worker = DataBaseWorker()
+        #self.db_worker = DataBaseWorker()
         self.selected_id = 0
         self.client = client
         self.initUI()
@@ -65,7 +64,7 @@ class DataBaseView(QtWidgets.QWidget):
         self.face_delete_layout = QtWidgets.QHBoxLayout()
         self.face_image_field = ImagePathWidget()
         self.delete_button = QtWidgets.QPushButton('Удалить')
-        self.delete_button.clicked.connect(self.delete_action)
+        #self.delete_button.clicked.connect(self.delete_action)
         self.face_delete_layout.addWidget(self.face_image_field)
         self.face_delete_layout.addWidget(self.delete_button)
         self.column_layout.addLayout(self.face_delete_layout)
@@ -113,7 +112,7 @@ class DataBaseView(QtWidgets.QWidget):
         dialog.dialog_signal.connect(lambda x: self.edit_action(x))
         dialog.exec()
 
-    def delete_action(self):
+    '''    def delete_action(self):
         # ask for confirmation in a dialog window
 
         logging.info("Deleting data from database...")
@@ -124,7 +123,7 @@ class DataBaseView(QtWidgets.QWidget):
             logging.error(
                 f'An error occured when deleting data from database. Error details: {e}')
             logging.warning('Database worker is not ready to delete data.')
-        self.update_db_table()
+        self.update_db_table()'''
 
     def update_db_table(self):
         logging.info("Updating database table...")
