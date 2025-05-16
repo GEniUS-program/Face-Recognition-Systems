@@ -1,1 +1,0 @@
-RFR;12;./faces/vectors/RFRvector.txt;C:/Users/romoc/Downloads/Telegram Desktop/photo_2024-10-30_13-43-40.jpg

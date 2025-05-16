@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
+#<-----------------THIS FILE IS NOT CURRENTLY USED----------------->
 import cv2
 from PyQt6 import QtWidgets
-from modules.utils.frame_display import FrameDisplayWidget
+from modules.utils.image_utils.frame_display import FrameDisplayWidget
 from modules.utils.recognition_history import RecognitinonHistoryWorker
 
 

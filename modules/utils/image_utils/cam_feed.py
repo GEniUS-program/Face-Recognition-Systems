@@ -162,7 +162,7 @@ class CameraWorker(QObject):
             frame, self.bboxes, self.names = self.check_trackers(frame, self.bboxes, self.names)
             self.frameCaptured.emit(frame)
 
-            time.sleep(0.033)  # Limit to ~30 FPS
+            time.sleep(0.033)  # Limit to 30 FPS
     
         self.cap.release()  # Release the camera when done
 
@@ -213,23 +213,12 @@ class VideoFeed(QWidget):
             self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def closeEvent(self, event):
-        print('closeEvent triggered')
-        # Signal the CameraWorker to stop running
-        self.cameraWorker.running = False  # Stop the camera worker loop
-        print('trying to close thread')
-        # Wait for the thread to finish
-        self.thread.quit()  # Request the thread to quit
-        self.thread.wait()  # Wait for the thread to finish
-        print('Thread closed. Closing Process Pool...')
-        # Clean up the process pool
-        self.cameraWorker.pool.terminate()  # Terminate the pool
-        self.cameraWorker.pool.join()  # Wait for the pool to terminate
-        print('Process Pool closed. Closing VideoCapture...')
-        # Release the video capture resource
+        self.cameraWorker.running = False
+        self.thread.quit()
+        self.thread.wait()
+        self.cameraWorker.pool.terminate()
+        self.cameraWorker.pool.join()
         if self.cameraWorker.cap.isOpened():
-            self.cameraWorker.cap.release()  # Release the camera
-            print('Capture closed')
-        if self.cameraWorker.cap.isOpened():
-            print('An error occured when trying to close the videocapture: cap was not released')
-        event.accept()  # Accept the event to close the application
+            self.cameraWorker.cap.release() 
+        event.accept() 
     

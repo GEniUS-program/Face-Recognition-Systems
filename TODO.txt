@@ -1,6 +1,5 @@
-    -   reformat the database for server and mysql (recognition history, users, faces tables) [HIGH PRIORITY]
-    -   do more tests [HIGH PRIORITY]
-    -   setup database and server [HIGH PRIORITY]
+    -   reformat the database for server and mysql (recognition history, users, faces tables) [COMPLETE]
+    -   setup database and server [COMPLETE]
     -   implement super-resolution [LOW PRIORITY]
     -   implement liveness detection [MEDIUM PRIORITY]
     -   do a rundown of the local laws [LOW PRIORITY]

@@ -8,11 +8,9 @@ import cv2
 import os
 
 from mysql.connector import Error
-from PIL import Image, ImageDraw, ImageFont
-from flask import Flask, request, jsonify, url_for
+from flask import Flask, request, jsonify
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
@@ -25,7 +23,7 @@ sql_engine = sqlalchemy.create_engine(
     'mysql+mysqlconnector://Ndioksiatdian:KPks8kp3N2skABX@Ndioksiatdian.mysql.pythonanywhere-services.com/Ndioksiatdian$default'
 )
 
-app.config['JWT_SECRET_KEY'] = 'super-secret'  # Change this in production
+app.config['JWT_SECRET_KEY'] = 'super-secret'  # To change sometime later
 jwt = JWTManager(app)
 # user_id:int:[access_token: str, public_key_pem: PublicKeyTypes, aes_key: bytes]
 users = {}
@@ -354,7 +352,7 @@ def add_face():
         dec_data = decrypt_aes(bytes.fromhex(
             data1), decrypt_user_rsa(iv), user_id)
     except Exception as e:
-        return jsonify({"reason": f"server error, {e}"}), 500
+        return jsonify({"reason": f"server error"}), 500
     try:
         data = pickle.loads(dec_data)
         name, clearance, encoding_vec, image = data
@@ -363,7 +361,7 @@ def add_face():
             pickle.dumps(encoding_vec), iv1)
         _, name = encrypt_aes_global(name.encode('utf-8'), iv1)
     except Exception as e:
-        return jsonify({"reason": f"server error, {e}"}), 500
+        return jsonify({"reason": f"server error"}), 500
     try:
 
         with sql_engine.connect() as connection:
@@ -374,7 +372,7 @@ def add_face():
 
         return jsonify({"message": "Face added successfully!"}), 200
     except Exception as e:
-        return jsonify({"reason": f"server error, {e}"}), 500
+        return jsonify({"reason": f"server error"}), 500
 
 
 @app.route('/edit_face', methods=['POST'])
