@@ -94,14 +94,18 @@ class Client:
         hashed_password = self.hash_data(password.encode())
         hashed_username = self.hash_data(username.encode())
 
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/login", json={
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/login", json={
             "client_public_key": self.other_enc_key.hex(),
             "password": hashed_password,
             "username": hashed_username
-        })
+        }, verify=False)
 
         if response.status_code != 200:
             print('error code when establishing connection', response.status_code)
+            try:
+                print(response.json())
+            except KeyError:
+                print(response.text)
             print(response.json()["error"])
             return {"success": False, "reason": response.json()["error"]}
 
@@ -178,11 +182,11 @@ class Client:
         hashed_password = self.hash_data(password)
         hashed_username = self.hash_data(username)
 
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/register_user", json={
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/register_user", json={
             "username": hashed_username,
             "password": hashed_password,
             "email": email
-        })
+        }, verify=False)
 
         if response.status_code == 200:
             self.successful_reg_signal.emit({"success": True})
@@ -191,7 +195,7 @@ class Client:
                 {"success": False, "reason": "alredy exists"})
         elif response.status_code == 500:
             self.successful_reg_signal.emit(
-                {"success": False, "reason": "server error"})
+                {"success": False, "reason": response.text})
             return
         else:
             self.successful_reg_signal.emit(
@@ -208,8 +212,8 @@ class Client:
             "faces": pickle.dumps(faces).hex()
         }
         print('Sending face recognition request...')
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/face_recognition",
-                                 json=json, headers={"Authorization": f"Bearer {self.token}"})
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/face_recognition",
+                                 json=json, headers={"Authorization": f"Bearer {self.token}"}, verify=False)
 
         data = response.json()
 
@@ -224,8 +228,8 @@ class Client:
 
     def get_recognition_history(self):
         names, datetimes, cam_indexes, levels, images = list(), list(), list(), list(), list()
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_recognition_history", headers={
-                                 "Authorization": f"Bearer {self.token}"})  # name, datetime, cam_index, level, image
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/get_recognition_history", headers={
+                                 "Authorization": f"Bearer {self.token}"}, verify=False)  # name, datetime, cam_index, level, image
 
         data = response.json()
 
@@ -275,8 +279,8 @@ class Client:
         return names, datetimes, cam_indexes, levels, images
 
     def get_faces(self):
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/get_faces", headers={
-                                 "Authorization": f"Bearer {self.token}"})  # name, clearance, face image
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/get_faces", headers={
+                                 "Authorization": f"Bearer {self.token}"}, verify=False)  # name, clearance, face image
 
         response_data = response.json()
 
@@ -309,10 +313,10 @@ class Client:
         iv, data = self.encrypt_aes(pickle.dumps(
             (name, clearance, encoding_vec, cv2.imencode('.jpg', face_img)[1].tobytes())))
 
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/add_face", json={
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/add_face", json={
             "data": data.hex(),
             "eiv": iv.hex()
-        }, headers={"Authorization": f"Bearer {self.token}"})
+        }, headers={"Authorization": f"Bearer {self.token}"}, verify=False)
 
         sc = response.status_code
         responsed = response.json()
@@ -334,11 +338,11 @@ class Client:
         iv, data = self.encrypt_aes(pickle.dumps(
             (name, clearance, encoding_vec, cv2.imencode('.jpg', face_img)[1].tobytes())))
 
-        response = requests.post("https://ndioksiatdian.pythonanywhere.com/edit_face", json={
+        response = requests.post("https://facerecogserver-agorobets.amvera.io/edit_face", json={
             "data": data.hex(),
             "eiv": iv.hex(),
             "index": index
-        }, headers={"Authorization": f"Bearer {self.token}"})
+        }, headers={"Authorization": f"Bearer {self.token}"}, verify=False)
 
         sc = response.status_code
         responsed = response.json()

@@ -44,27 +44,37 @@ class CameraWorker(QObject):
                     self.cam = line.split(';')[1]
                     self.cam_cl = line.split(';')[2]
 
-    def create_trackers(self, frame, faces): # this is where we send the frame to face_recognition to assign the correct names to the faces
-        data = self.parent1.client.face_recognition(cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))[1].tobytes(), self.cam_cl, self.cam, self.camera_index, faces)
+    def create_trackers(self, frame, faces): 
+        data = self.parent1.client.face_recognition(
+            cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))[1].tobytes(), 
+            self.cam_cl, self.cam, self.camera_index, faces
+        )
         frame_new, locations, names, clearances = data[0], data[1], data[2], data[3]
+        
         for i, (location, name, clearance_status) in enumerate(zip(locations, names, clearances)):
-            if name != 'Unknown' and any(name in i for i in self.object_trackers):# checking if the tracker exists (only works with face recognition full - when faces get assigned correct names and not random ones)
-                #delete the tracker and replace it with a new one
-                top, right, bottom, left = location  # Unpack the coordinates
-                tracker = cv2.TrackerCSRT_create()
-                tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
+            top, right, bottom, left = location  # Unpack the coordinates
+            
+            if name != 'Unknown' and any(name in i for i in self.object_trackers):
+                # Trackers exist - just update the existing tracker's info
                 ind = 0
                 for i in range(len(self.object_trackers)):
                     if self.object_trackers[i][1] == name:
                         ind = i
                         break
-                self.object_trackers[ind] = [tracker, name, (left, top), clearance_status]
-                continue
+                
+                # Update the existing tracker's position data (don't create new tracker)
+                self.object_trackers[ind] = [
+                    self.object_trackers[ind][0],  # Keep the existing tracker instance
+                    name, 
+                    (left, top), 
+                    clearance_status
+                ]
+                continue  # Skip to next face
             
-            top, right, bottom, left = location  # Unpack the coordinates
-            tracker = cv2.TrackerCSRT_create()
-            tracker.init(frame, (left, top, right - left, bottom - top))  # Initialize tracker with correct format
-            self.object_trackers.append([tracker, name, (left, top), clearance_status])  # Store the initial position
+            # Only create a NEW tracker for unknown faces or faces we haven't tracked before
+            tracker = cv2.legacy.TrackerCSRT_create()
+            tracker.init(frame, (left, top, right - left, bottom - top))
+            self.object_trackers.append([tracker, name, (left, top), clearance_status])
         
     def check_trackers(self, frame, bboxes=[], names=[]):
         bboxes = bboxes

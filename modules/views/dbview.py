@@ -89,20 +89,26 @@ class DataBaseView(QtWidgets.QWidget):
 
     def add_action(self, answer):
         if answer == 'a':
-            self.client.client.add_face(self.name_field.text(), int(
-                self.clearance_field.text()), self.face_image_field.path_label.text())
-            self.update_db_table()
+            try:
+                self.client.client.add_face(self.name_field.text(), int(
+                    self.clearance_field.text()), self.face_image_field.path_label.text())
+                self.update_db_table()
+            except:
+                return None
         else:
             logging.info('Adding data cancelled.')
 
     def edit_action(self, answer):
         if answer == 'a':
-            line_index = self.database_info_table.currentRow()
-            idt = int(self.database_info_table.item(line_index, 0).text())
-            logging.info(f"Editing data in line {line_index} of database...")
+            try:
+                line_index = self.database_info_table.currentRow()
+                idt = int(self.database_info_table.item(line_index, 0).text())
+                logging.info(f"Editing data in line {line_index} of database...")
 
-            self.client.client.edit_face(self.name_field.text(), int(
-                self.clearance_field.text()), self.face_image_field.path_label.text(), idt)
+                self.client.client.edit_face(self.name_field.text(), int(
+                    self.clearance_field.text()), self.face_image_field.path_label.text(), idt)
+            except:
+                return None
 
         self.update_db_table()
 

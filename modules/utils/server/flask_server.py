@@ -1,6 +1,7 @@
-import numpy as np
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import face_recognition
+import numpy as np
 import sqlalchemy
 import datetime
 import pickle
@@ -9,19 +10,36 @@ import os
 
 from mysql.connector import Error
 from flask import Flask, request, jsonify
-from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 
 
 app = Flask(__name__)
 
+DB_CONFIG = {
+    'host': 'amvera-agorobets-run-face-recognition',
+    'port': 3306, 
+    'user': 'adminfrsu', 
+    'password': 'adminfrsu', 
+    'database': 'adminfrs', 
+    
+}
+
 sql_engine = sqlalchemy.create_engine(
-    'mysql+mysqlconnector://Ndioksiatdian:KPks8kp3N2skABX@Ndioksiatdian.mysql.pythonanywhere-services.com/Ndioksiatdian$default'
+    f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}",
+    pool_pre_ping=True,  
+    pool_recycle=3600,   
+    pool_size=10,        
+    max_overflow=20      
 )
+
+
+
+
 
 app.config['JWT_SECRET_KEY'] = 'super-secret'  # To change sometime later
 jwt = JWTManager(app)
@@ -139,14 +157,14 @@ def establish_connection():
             rows = rows.fetchall()
 
         for row in rows:
-            if password == row['password'].hex() and username == row['username'].hex():
+            if password == row[2].hex() and username == row[1].hex():
                 user_id = row[0]
                 break
         else:
             return jsonify({"error": "Отказано в доступе. Неверный логин или пароль"}), 401
     except Error as e:
         print(e)
-        return jsonify({"error": f"Возникла непредвиденная ошибка. Попробуйте позже."}), 500
+        return jsonify({"error": str(e)}), 500
     else:
         access_token = create_access_token(identity=str(user_id))
         users[user_id] = [access_token, client_public_key, os.urandom(32)]
@@ -169,18 +187,21 @@ def register_new_user():
 
     try:
         with sql_engine.connect() as connection:
-            connection.execute(
-                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s)",
-                (bytes.fromhex(username), bytes.fromhex(
-                    password), 'placeholder@mail.ru')
+            connection.execute(sqlalchemy.text(
+                "INSERT INTO users (username, password, email) VALUES (:username, :password, :email)"),
+                {
+                    "username": bytes.fromhex(username),
+                    "password": bytes.fromhex(password),
+                    "email": 'placeholder@mail.ru'
+                }
             )
             connection.commit()
         return jsonify({"success": True, "reason": "User registered successfully"}), 200
     except Exception as e:
         if 'Duplicate entry' in str(e):
-            return jsonify({"success": False, "reason": "server error "}), 400
+            return jsonify({"success": False, "reason": str(e)}), 400
         else:
-            return jsonify({"success": False, "reason": "server error "}), 500
+            return jsonify({"success": False, "reason": str(e)}), 500
 
 
 @app.route('/face_recognition', methods=['POST'])
@@ -245,11 +266,19 @@ def save_recognition_info(user_id, name, image, level, cam_index):
     image = cv2.imencode('.jpg', image)[1].tobytes()
     iv, image = encrypt_aes_global(image)
     with sql_engine.connect() as connection:  # Connect to the database
-        connection.execute(
-            "INSERT INTO recognition_history (acc_id, name, date_time, image, sufficient_level, cam_index, eiv) VALUES (%s, %s, %s, %s, %s, %s, %s)", (
-                user_id, name, datetime.datetime.now(), image, level, cam_index, iv)
+        connection.execute(sqlalchemy.text(
+            "INSERT INTO recognition_history (acc_id, name, date_time, image, sufficient_level, cam_index, eiv) VALUES (:user_id, :name, :dt, :img, :lvl, :ci, :iv)"), 
+            {
+                "user_id": user_id,
+                "name": name,
+                "dt": datetime.datetime.now(),
+                "img": image,
+                "lvl": level,
+                "ci": cam_index,
+                "iv": iv
+            }
         )
-
+        connection.commit()
 
 def get_recognition_info(clearances, known_face_names, known_face_encodings, matches, face_encoding):
     if True in matches:
@@ -265,9 +294,11 @@ def get_recognition_info(clearances, known_face_names, known_face_encodings, mat
 def get_faces(user_id):
     global sql_engine
     with sql_engine.connect() as connection:
-        rows = connection.execute(
-            "SELECT vector, eiv, name, access_level, face_id, image FROM faces WHERE acc_id = %s", (
-                user_id,)
+        rows = connection.execute(sqlalchemy.text(
+            "SELECT vector, eiv, name, access_level, face_id, image FROM faces WHERE acc_id = :ai"),
+            {
+                "ai": user_id
+            }
         )
 
     face_encodings = []
@@ -295,8 +326,8 @@ def get_recognition_history():
     user_id = int(get_jwt_identity())
 
     with sql_engine.connect() as connection:
-        rows = connection.execute(
-            "SELECT name, date_time, cam_index, sufficient_level, image, eiv FROM recognition_history WHERE acc_id = %s", (user_id,))
+        rows = connection.execute(sqlalchemy.text(
+            "SELECT name, date_time, cam_index, sufficient_level, image, eiv FROM recognition_history WHERE acc_id = :ai"), {"ai":user_id})
         result = rows.fetchall()
 
     names, datetimes, cam_indexes, levels, images, eivs = list(
@@ -352,7 +383,7 @@ def add_face():
         dec_data = decrypt_aes(bytes.fromhex(
             data1), decrypt_user_rsa(iv), user_id)
     except Exception as e:
-        return jsonify({"reason": f"server error"}), 500
+        return jsonify({"reason": str(e)}), 500
     try:
         data = pickle.loads(dec_data)
         name, clearance, encoding_vec, image = data
@@ -361,18 +392,25 @@ def add_face():
             pickle.dumps(encoding_vec), iv1)
         _, name = encrypt_aes_global(name.encode('utf-8'), iv1)
     except Exception as e:
-        return jsonify({"reason": f"server error"}), 500
+        return jsonify({"reason": str(e)}), 500
     try:
 
         with sql_engine.connect() as connection:
-            connection.execute(
-                "INSERT INTO faces (acc_id, name, access_level, vector, image, eiv) VALUES (%s, %s, %s, %s, %s, %s)", (
-                    user_id, name, clearance, encoding_vec, image, iv1)
+            connection.execute(sqlalchemy.text(
+                "INSERT INTO faces (acc_id, name, access_level, vector, image, eiv) VALUES (:ui, :name, :clr, :ev, :img, :iv)"), 
+                {
+                    "ui": user_id,
+                    "name": name,
+                    "clr": clearance,
+                    "ev": encoding_vec,
+                    "img": image,
+                    "iv": iv1
+                }
             )
-
+            connection.commit()
         return jsonify({"message": "Face added successfully!"}), 200
     except Exception as e:
-        return jsonify({"reason": f"server error"}), 500
+        return jsonify({"reason": str(e)}), 500
 
 
 @app.route('/edit_face', methods=['POST'])
@@ -400,12 +438,20 @@ def edit_face():
     _, name = encrypt_aes_global(name.encode('utf-8'), iv1)
     try:
         with sql_engine.connect() as connection:
-            connection.execute(
-                "UPDATE faces SET name = %s, access_level = %s, vector = %s, image = %s, eiv = %s WHERE face_id = %s", (
-                    name, clearance, encoding_vec, image, iv1, index
-                ))
-    except Error:
-        return jsonify({"reason": "server error"}), 500
+            connection.execute(sqlalchemy.text(
+                "UPDATE faces SET name = :name, access_level = :clr, vector = :ev, image = :img, eiv = :iv WHERE face_id = :index"), 
+                {
+                    "name": name,
+                    "clr": clearance,
+                    "ev": encoding_vec,
+                    "img": image,
+                    "iv": iv1,
+                    "index": index
+                }
+                )
+            connection.commit()
+    except Exception as e:
+        return jsonify({"reason": str(e)}), 500
     else:
         return jsonify({"reason": "Face edited successfully!"}), 200
 
@@ -417,3 +463,8 @@ def logout():
     user_id = get_jwt_identity()
     del users[user_id]
     return jsonify({"message": "Logout successful!"}), 200
+
+
+if __name__ == '__main__':
+    port = 80
+    app.run(host='0.0.0.0', port=port, debug=False)
